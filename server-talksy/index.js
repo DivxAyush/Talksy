@@ -10,6 +10,7 @@ fastify.get("/", async () => {
   return { message: "Talksy server running 🚀" }
 })
 
+
 const start = async () => {
   try {
     await fastify.listen({ port: 5000, host: "0.0.0.0" })
