@@ -1,40 +1,59 @@
-import User from "../models/userModel.js";
+import MastUser from "../models/userModel.js";
 import bcrypt from "bcrypt";
 
 export const registerUser = async (request, reply) => {
-  try {
-    const { username, email, password } = request.body;
+ try {
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const { username, mobile, password } = request.body;
 
-    const user = new User({
-      username,
-      email,
-      password: hashedPassword
-    });
+  // check existing user
+  const existingUser = await MastUser.findOne({ mobile }); User
 
-    await user.save();
-
-    return { message: "User registered successfully" };
-
-  } catch (error) {
-    reply.code(500).send({ error: error.message });
+  if (existingUser) {
+   return reply.code(400).send({
+    success: false,
+    message: "Mobile number already registered"
+   });
   }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const user = new MastUser({
+   username,
+   mobile,
+   password: hashedPassword
+  });
+
+  await user.save();
+
+  return {
+   success: true,
+   message: "User registered successfully"
+  };
+
+ } catch (error) {
+
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+
+ }
 };
 
 export const getUsers = async (request, reply) => {
-  try {
-    const users = await User.find().select("password email");
+ try {
+  const users = await MastUser.find().select("username password email");
 
-    return {
-      success: true,
-      users
-    };
+  return {
+   success: true,
+   users
+  };
 
-  } catch (error) {
-    reply.code(500).send({
-      success: false,
-      message: error.message
-    });
-  }
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
 };
