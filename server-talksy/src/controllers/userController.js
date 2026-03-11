@@ -7,7 +7,7 @@ export const registerUser = async (request, reply) => {
   const { username, mobile, password } = request.body;
 
   // check existing user
-  const existingUser = await MastUser.findOne({ mobile }); User
+  const existingUser = await MastUser.findOne({ mobile }); MastUser
 
   if (existingUser) {
    return reply.code(400).send({
