@@ -21,3 +21,20 @@ export const registerUser = async (request, reply) => {
     reply.code(500).send({ error: error.message });
   }
 };
+
+export const getUsers = async (request, reply) => {
+  try {
+    const users = await User.find().select("password email");
+
+    return {
+      success: true,
+      users
+    };
+
+  } catch (error) {
+    reply.code(500).send({
+      success: false,
+      message: error.message
+    });
+  }
+};

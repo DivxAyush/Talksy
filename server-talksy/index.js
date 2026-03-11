@@ -12,7 +12,13 @@ connectDB();
 fastify.register(userRoutes, { prefix: "/api/users" });
 
 const start = async () => {
-  await fastify.listen({ port: 5000 });
+  try {
+    await fastify.listen({ port: process.env.PORT || 5000, host: "0.0.0.0" });
+  }
+  catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
 };
 
 start();
