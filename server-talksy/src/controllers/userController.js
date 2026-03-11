@@ -57,3 +57,42 @@ export const getUsers = async (request, reply) => {
   });
  }
 };
+
+export const loginUser = async (request, reply) => {
+ try {
+
+  const { mobile, password } = request.body;
+
+  // check user by mobile
+  const user = await MastUser.findOne({ mobile });
+
+  if (!user) {
+   return reply.code(400).send({
+    success: false,
+    message: "User not found"
+   });
+  }
+
+  // compare password
+  const isMatch = await bcrypt.compare(password, user.password);
+
+  if (!isMatch) {
+   return reply.code(400).send({
+    success: false,
+    message: "Invalid password"
+   });
+  }
+
+  // login success
+  return {
+   success: true,
+   username: user.username
+  };
+
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};
