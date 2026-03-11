@@ -1,22 +1,22 @@
-require("dotenv").config()
-const fastify = require("fastify")({ logger: true })
-const mongoose = require("mongoose")
+import Fastify from "fastify";
+import dotenv from "dotenv";
+import connectDB from "./src/config/db.js";
+import userRoutes from "./src/routes/userRoutes.js";
 
-mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("MongoDB Connected 🚀"))
-  .catch((err) => console.log(err))
+dotenv.config();
 
-fastify.get("/", async () => {
-  return { message: "Talksy server running 🚀" }
-})
+const fastify = Fastify({ logger: true });
+connectDB();
+fastify.register(userRoutes, { prefix: "/api/users" });
 
 const start = async () => {
-  try {
-    await fastify.listen({ port: 5000, host: "0.0.0.0" })
-  } catch (err) {
-    fastify.log.error(err)
-    process.exit(1)
-  }
-}
+ try {
+  await fastify.listen({ port: process.env.PORT || 5000, host: "0.0.0.0" });
+ }
+ catch (err) {
+  fastify.log.error(err);
+  process.exit(1);
+ }
+};
 
-start()
+start();
