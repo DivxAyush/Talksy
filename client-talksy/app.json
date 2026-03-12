@@ -1,29 +1,40 @@
 {
   "expo": {
-    "name": "client-talksy",
+    "name": "Talksy",
     "slug": "client-talksy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logotalksy.png",
     "userInterfaceStyle": "light",
+
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash2.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
       "supportsTablet": true
     },
+
     "android": {
+      "package": "com.talksy.chat",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/logotalksy.png",
+        "backgroundColor": "#ffffff"
       }
     },
+
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+
+    "extra": {
+      "eas": {
+        "projectId": "593f69ca-2eeb-4e1b-8a6c-4569f6cf92bb"
+      }
+    },
+
+    "owner": "ayush2133k"
   }
 }
