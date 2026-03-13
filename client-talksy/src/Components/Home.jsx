@@ -22,7 +22,7 @@ export default function Home({ navigation }) {
  const loadUsers = async () => {
   try {
 
-   const res = await axios.get("http://YOUR_IP:5000/api/users/users");
+   const res = await axios.get("https://talksy-3py1.onrender.com/api/users/users");
 
    setUsers(res.data.users);
    setFilteredUsers(res.data.users);
@@ -64,7 +64,7 @@ export default function Home({ navigation }) {
 
     <View style={styles.avatar}>
      <Text style={styles.avatarText}>
-      {item.username.charAt(0)}
+      {item?.username?.charAt(0)}
      </Text>
     </View>
 

@@ -37,7 +37,7 @@ export default function ChatUser({ route, navigation }) {
   if (!text.trim()) return;
 
   try {
-   await axios.post("http://YOUR_IP:5000/api/messages/send-message", { senderId, receiverId, message: text });
+   await axios.post("https://talksy-3py1.onrender.com/api/messages/send-message", { senderId, receiverId, message: text });
    setText("");
    loadMessages();
 
@@ -77,7 +77,7 @@ export default function ChatUser({ route, navigation }) {
 
      <View style={styles.avatar}>
       <Text style={styles.avatarText}>
-       {user.name.charAt(0)}
+       {user.name || "U"}
       </Text>
      </View>
 
