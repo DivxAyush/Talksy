@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+
+import React, { useEffect, useState } from "react";
 import {
  View,
  Text,
@@ -9,117 +10,96 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import axios from "axios";
 
-const chats = Array.from({ length: 20 }, (_, i) => ({
- id: i.toString(),
- name: "User " + (i + 1),
- time: "4:20 AM"
-}));
+export default function Home({ navigation }) {
 
-export default function Home() {
+ const [users, setUsers] = useState([]);
  const [search, setSearch] = useState("");
- const [filteredChats, setFilteredChats] = useState(chats);
+ const [filteredUsers, setFilteredUsers] = useState([]);
+
+ // API CALL
+ const loadUsers = async () => {
+  try {
+
+   const res = await axios.get("http://YOUR_IP:5000/api/users/users");
+
+   setUsers(res.data.users);
+   setFilteredUsers(res.data.users);
+
+  } catch (err) {
+   console.log(err);
+  }
+ };
+
+ useEffect(() => {
+  loadUsers();
+ }, []);
+
  const handleSearch = (text) => {
 
   setSearch(text);
 
-  if (text === "") {
-   setFilteredChats(chats);
+  if (!text) {
+   setFilteredUsers(users);
    return;
   }
 
-  const filtered = chats.filter((item) =>
-   item.name.toLowerCase().includes(text.toLowerCase())
+  const filtered = users.filter((item) =>
+   item.username.toLowerCase().includes(text.toLowerCase())
   );
 
-  setFilteredChats(filtered);
+  setFilteredUsers(filtered);
 
  };
 
-
  const renderItem = ({ item }) => (
-  <TouchableOpacity style={styles.chatRow}>
+
+  <TouchableOpacity
+   style={styles.chatRow}
+   onPress={() => navigation.navigate("chatUser", { user: item })}
+  >
 
    <View style={styles.chatLeft}>
 
     <View style={styles.avatar}>
      <Text style={styles.avatarText}>
-      {item.name.charAt(0)}
+      {item.username.charAt(0)}
      </Text>
     </View>
 
-    <Text style={styles.chatName}>{item.name}</Text>
+    <Text style={styles.chatName}>{item.username}</Text>
 
    </View>
 
-   <Text style={styles.time}>{item.time}</Text>
-
   </TouchableOpacity>
+
  );
 
  return (
-
   <View style={styles.container}>
 
-   {/* HEADER */}
-
-   <LinearGradient
-    colors={["#5f7cff", "#4a60e0"]}
-    style={styles.header}
-   >
+   <LinearGradient colors={["#5f7cff", "#4a60e0"]} style={styles.header}>
 
     <Text style={styles.logo}>Talksy</Text>
 
-    {/* SEARCH */}
-
     <View style={styles.searchBox}>
-
      <Ionicons name="search" size={20} color="#777" />
-
      <TextInput
-      placeholder="Search for talk"
+      placeholder="Search user"
       style={styles.searchInput}
       value={search}
       onChangeText={handleSearch}
      />
-
     </View>
 
    </LinearGradient>
 
-   {/* CHAT LIST */}
-
    <FlatList
-    data={filteredChats}
-    keyExtractor={(item) => item.id}
+    data={filteredUsers}
+    keyExtractor={(item) => item._id}
     renderItem={renderItem}
    />
-
-   {/* BOTTOM MENU */}
-
-   <View style={styles.bottomMenu}>
-
-    <TouchableOpacity style={styles.menuItem}>
-     <Ionicons name="chatbubble" size={22} color="#4a60e0" />
-     <Text style={styles.menuText}>Chat</Text>
-    </TouchableOpacity>
-
-    <TouchableOpacity style={styles.menuItem}>
-     <Ionicons name="people" size={22} color="#888" />
-     <Text style={styles.menuText}>Contact</Text>
-    </TouchableOpacity>
-
-    <TouchableOpacity style={styles.menuItem}>
-     <Ionicons name="person" size={22} color="#888" />
-     <Text style={styles.menuText}>Profile</Text>
-    </TouchableOpacity>
-
-    <TouchableOpacity style={styles.menuItem}>
-     <Ionicons name="settings" size={22} color="#888" />
-     <Text style={styles.menuText}>Setting</Text>
-    </TouchableOpacity>
-
-   </View>
 
   </View>
  );
@@ -127,10 +107,7 @@ export default function Home() {
 
 const styles = StyleSheet.create({
 
- container: {
-  flex: 1,
-  backgroundColor: "#fff"
- },
+ container: { flex: 1, backgroundColor: "#fff" },
 
  header: {
   paddingTop: 60,
@@ -161,7 +138,6 @@ const styles = StyleSheet.create({
 
  chatRow: {
   flexDirection: "row",
-  justifyContent: "space-between",
   alignItems: "center",
   paddingHorizontal: 20,
   paddingVertical: 15,
@@ -191,33 +167,7 @@ const styles = StyleSheet.create({
 
  chatName: {
   fontSize: 16
- },
-
- time: {
-  color: "#888",
-  fontSize: 12
- },
-
- bottomMenu: {
-  position: "absolute",
-  bottom: 20,
-  left: 20,
-  right: 20,
-  flexDirection: "row",
-  justifyContent: "space-around",
-  backgroundColor: "#fff",
-  paddingVertical: 12,
-  borderRadius: 20,
-  elevation: 10
- },
-
- menuItem: {
-  alignItems: "center"
- },
-
- menuText: {
-  fontSize: 12,
-  marginTop: 3
  }
 
 });
+
