@@ -12,28 +12,28 @@ export default function ChatUser({ route, navigation }) {
  const receiverId = user._id || user.id;
  const [messages, setMessages] = useState([]);
  const [text, setText] = useState("");
-const [senderId, setSenderId] = useState("");
+ const [senderId, setSenderId] = useState("");
 
-useEffect(() => {
+ useEffect(() => {
 
- const getUser = async () => {
+  const getUser = async () => {
 
-  const id = await AsyncStorage.getItem("userId");
-  console.log("Sender:", id);
+   const id = await AsyncStorage.getItem("userId");
+   console.log("Sender:", id);
 
-  setSenderId(id);
+   setSenderId(id);
 
- };
+  };
 
- getUser();
+  getUser();
 
-}, []);
+ }, []);
  // GET MESSAGES
  const loadMessages = async () => {
   try {
-console.log("Sender:", senderId);
-console.log("Receiver:", receiverId);
-console.log("Message:", text);
+   console.log("Sender:", senderId);
+   console.log("Receiver:", receiverId);
+   console.log("Message:", text);
    const res = await axios.get(`https://talksy-3py1.onrender.com/api/messages/messages/${senderId}/${receiverId}`);
 
    setMessages(res.data.messages);
@@ -43,33 +43,35 @@ console.log("Message:", text);
   }
  };
 
- useEffect(() => {
+useEffect(() => {
+ if (senderId) {
   loadMessages();
- }, []);
+ }
+}, [senderId]);
 
  // SEND MESSAGE
-const sendMessage = async () => {
+ const sendMessage = async () => {
 
- if (!senderId) return;   // 👈 yaha lagana hai
- if (!text.trim()) return;
+  if (!senderId) return;   // 👈 yaha lagana hai
+  if (!text.trim()) return;
 
- try {
-console.log("Sender:", senderId);
-console.log("Receiver:", receiverId);
-console.log("Message:", text);
-  await axios.post(
-   "https://talksy-3py1.onrender.com/api/messages/send-message",
-   { senderId, receiverId, message: text }
-  );
+  try {
+   console.log("Sender:", senderId);
+   console.log("Receiver:", receiverId);
+   console.log("Message:", text);
+   await axios.post(
+    "https://talksy-3py1.onrender.com/api/messages/send-message",
+    { senderId, receiverId, message: text }
+   );
 
-  setText("");
-  loadMessages();
+   setText("");
+   loadMessages();
 
- } catch (err) {
- console.log("ERROR:", err.response?.data);
-}
+  } catch (err) {
+   console.log("ERROR:", err.response?.data);
+  }
 
-};
+ };
 
  const renderItem = ({ item }) => {
 

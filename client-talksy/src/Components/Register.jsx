@@ -4,7 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
-export default function Register() {
+import AsyncStorage from "@react-native-async-storage/async-storage";
+export default function Register({ setIsLoggedIn }) {
 
  const [name, setName] = useState("");
  const [mobile, setMobile] = useState("");
@@ -65,14 +66,26 @@ export default function Register() {
 
    const res = await axios.post("https://talksy-3py1.onrender.com/api/users/register", payload);
 
-   if (res.data) {
+   if (res.data.success) {
+
+    const user = res.data.user;
+
+    await AsyncStorage.setItem("userId", user._id);
+
+    await AsyncStorage.setItem(
+     "user",
+     JSON.stringify(user)
+    );
+
     setName("");
     setMobile("");
     setPassword("");
     setConfirmPassword("");
     setChecked(false);
     setErrors({});
-    navigation.navigate("Home");
+
+    setIsLoggedIn(true);
+
    }
   } catch (err) {
    alert(err?.response?.data?.message || "Server not reachable");
@@ -253,7 +266,7 @@ export default function Register() {
      </TouchableOpacity>
 
     </View>
-     <Text onPress={() => navigation.navigate("Login")}   style={styles.LoginClick}>Already have an Account ? <Text style={styles.LoginText}>Login</Text></Text>
+    <Text onPress={() => navigation.navigate("Login")} style={styles.LoginClick}>Already have an Account ? <Text style={styles.LoginText}>Login</Text></Text>
 
 
    </View>
@@ -265,7 +278,7 @@ export default function Register() {
 const styles = StyleSheet.create({
 
  LoginClick: {
-  fontSize:15,
+  fontSize: 15,
   textAlign: "center",
   marginTop: 15,
   color: "#888"

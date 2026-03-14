@@ -7,7 +7,7 @@ export const registerUser = async (request, reply) => {
   const { username, mobile, password } = request.body;
 
   // check existing user
-  const existingUser = await MastUser.findOne({ mobile }); MastUser
+  const existingUser = await MastUser.findOne({ mobile });
 
   if (existingUser) {
    return reply.code(400).send({
@@ -26,10 +26,15 @@ export const registerUser = async (request, reply) => {
 
   await user.save();
 
-  return {
-   success: true,
-   message: "User registered successfully"
-  };
+return {
+ success: true,
+ message: "User registered successfully",
+ user: {
+  _id: user._id,
+  username: user.username,
+  mobile: user.mobile
+ }
+};
 
  } catch (error) {
 

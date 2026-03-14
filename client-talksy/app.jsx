@@ -13,73 +13,76 @@ const Stack = createNativeStackNavigator();
 
 export default function App() {
 
-  const [loading, setLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+ const [loading, setLoading] = useState(true);
+ const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  const checkLogin = async () => {
-    try {
-      const user = await AsyncStorage.getItem("user");
+ const checkLogin = async () => {
+  try {
+   const user = await AsyncStorage.getItem("user");
 
-      if (user) {
-        setIsLoggedIn(true);
-      }
-    } catch (error) {
-      console.log(error);
-    }
+   if (user) {
+    setIsLoggedIn(true);
+   }
+  } catch (error) {
+   console.log(error);
+  }
 
-    setLoading(false);
-  };
+  setLoading(false);
+ };
 
-  useEffect(() => {
-    checkLogin();
-  }, []);
+ useEffect(() => {
+  checkLogin();
+ }, []);
 
-  if (loading) return null;
+ if (loading) return null;
 
-  return (
-    <NavigationContainer>
+ return (
+  <NavigationContainer>
 
-      <Stack.Navigator>
+   <Stack.Navigator>
 
-        {isLoggedIn ? (
-          <>
-            <Stack.Screen
-              name="Home"
-              options={{ headerShown: false }}
-            >
-              {(props) => (
-                <Home {...props} setIsLoggedIn={setIsLoggedIn} />
-              )}
-            </Stack.Screen>
+    {isLoggedIn ? (
+     <>
+      <Stack.Screen
+       name="Home"
+       options={{ headerShown: false }}
+      >
+       {(props) => (
+        <Home {...props} setIsLoggedIn={setIsLoggedIn} />
+       )}
+      </Stack.Screen>
 
-            <Stack.Screen
-              name="chatUser"
-              component={ChatUser}
-              options={{ headerShown: false }}
-            />
-          </>
-        ) : (
-          <>
-            <Stack.Screen
-              name="Login"
-              options={{ headerShown: false }}
-            >
-              {(props) => (
-                <Login {...props} setIsLoggedIn={setIsLoggedIn} />
-              )}
-            </Stack.Screen>
+      <Stack.Screen
+       name="chatUser"
+       component={ChatUser}
+       options={{ headerShown: false }}
+      />
+     </>
+    ) : (
+     <>
+      <Stack.Screen
+       name="Login"
+       options={{ headerShown: false }}
+      >
+       {(props) => (
+        <Login {...props} setIsLoggedIn={setIsLoggedIn} />
+       )}
+      </Stack.Screen>
 
-            <Stack.Screen
-              name="Register"
-              component={Register}
-              options={{ headerShown: false }}
-            />
-          </>
-        )}
+      <Stack.Screen
+       name="Register"
+       options={{ headerShown: false }}
+      >
+       {(props) => (
+        <Register {...props} setIsLoggedIn={setIsLoggedIn} />
+       )}
+      </Stack.Screen>
+     </>
+    )}
 
-      </Stack.Navigator>
+   </Stack.Navigator>
 
-    </NavigationContainer>
-  );
+  </NavigationContainer>
+ );
 }
 

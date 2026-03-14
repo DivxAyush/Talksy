@@ -12,7 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-export default function Home({ navigation }) {
+export default function Home({ navigation, setIsLoggedIn }) {
 
  const [users, setUsers] = useState([]);
  const [search, setSearch] = useState("");
