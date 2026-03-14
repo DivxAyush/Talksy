@@ -48,25 +48,28 @@ export default function Login({ setIsLoggedIn }) {
     password
    };
 
-   const res = await axios.post("https://talksy-3py1.onrender.com/api/users/login", payload );
+const res = await axios.post(
+  "https://talksy-3py1.onrender.com/api/users/login",
+  payload
+);
 
-  if (res.data.success) {
+console.log("LOGIN RESPONSE:", res.data);
 
- await AsyncStorage.setItem(
-  "userId",
-  res.data.data._id
- );
+if (res.data.success) {
 
- await AsyncStorage.setItem(
-  "user",
-  JSON.stringify(res.data.data)
- );
+  const user = res.data.user;   // 👈 yaha se user nikalo
 
- setMobile("");
- setPassword("");
+  await AsyncStorage.setItem("userId", user._id);
 
- setIsLoggedIn(true);
+  await AsyncStorage.setItem(
+    "user",
+    JSON.stringify(user)
+  );
 
+  setMobile("");
+  setPassword("");
+
+  setIsLoggedIn(true);
 }
 
   }catch (err) {
