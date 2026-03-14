@@ -11,13 +11,17 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 export default function Home({ navigation }) {
 
  const [users, setUsers] = useState([]);
  const [search, setSearch] = useState("");
  const [filteredUsers, setFilteredUsers] = useState([]);
 
+const handleLogout = async () => {
+  await AsyncStorage.clear();
+  setIsLoggedIn(false);
+};
  // API CALL
  const loadUsers = async () => {
   try {
@@ -79,26 +83,36 @@ export default function Home({ navigation }) {
  return (
   <View style={styles.container}>
 
-   <LinearGradient colors={["#5f7cff", "#4a60e0"]} style={styles.header}>
+<LinearGradient colors={["#5f7cff", "#4a60e0"]} style={styles.header}>
+
+  <View style={styles.headerRow}>
 
     <Text style={styles.logo}>Talksy</Text>
 
-    <View style={styles.searchBox}>
-     <Ionicons name="search" size={20} color="#777" />
-     <TextInput
+    <TouchableOpacity onPress={handleLogout}>
+      <Ionicons name="log-out-outline" size={26} color="#fff" />
+    </TouchableOpacity>
+
+  </View>
+
+  <View style={styles.searchBox}>
+    <Ionicons name="search" size={20} color="#777" />
+    <TextInput
       placeholder="Search user"
       style={styles.searchInput}
       value={search}
       onChangeText={handleSearch}
-     />
-    </View>
+    />
+  </View>
 
-   </LinearGradient>
+</LinearGradient>
+
 
    <FlatList
     data={filteredUsers}
     keyExtractor={(item) => item._id}
     renderItem={renderItem}
+    inverted
    />
 
   </View>
@@ -108,6 +122,14 @@ export default function Home({ navigation }) {
 const styles = StyleSheet.create({
 
  container: { flex: 1, backgroundColor: "#fff" },
+
+headerRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  width: "100%",
+  marginBottom: 12
+},
 
  header: {
   paddingTop: 60,

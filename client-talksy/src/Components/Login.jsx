@@ -4,8 +4,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
-
-export default function Login() {
+import AsyncStorage from "@react-native-async-storage/async-storage";
+export default function Login({ setIsLoggedIn }) {
 
  const [mobile, setMobile] = useState("");
  const [password, setPassword] = useState("");
@@ -48,19 +48,39 @@ export default function Login() {
     password
    };
 
-   const res = await axios.post("https://talksy-3py1.onrender.com/api/users/login", payload);
+   const res = await axios.post("https://talksy-3py1.onrender.com/api/users/login", payload );
 
-   if (res.data) {
-    setMobile("");
-    setPassword("");
-    navigation.navigate("Home");
-   }
+  if (res.data.success) {
 
-  } catch (err) {
-   alert(err?.response?.data?.message || "Login failed");
-  } finally {
+ await AsyncStorage.setItem(
+  "userId",
+  res.data.data._id
+ );
+
+ await AsyncStorage.setItem(
+  "user",
+  JSON.stringify(res.data.data)
+ );
+
+ setMobile("");
+ setPassword("");
+
+ setIsLoggedIn(true);
+
+}
+
+  }catch (err) {
+  console.log("LOGIN ERROR:", err.response?.data);
+
+ console.log("FULL ERROR:", err);
+ console.log("ERROR MESSAGE:", err.message);
+ console.log("ERROR RESPONSE:", err.response);
+
+ alert("Login failed");
+} finally {
    setLoading(false);
   }
+
  };
 
  return (

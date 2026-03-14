@@ -63,7 +63,6 @@ export const loginUser = async (request, reply) => {
 
   const { mobile, password } = request.body;
 
-  // check user by mobile
   const user = await MastUser.findOne({ mobile });
 
   if (!user) {
@@ -73,7 +72,6 @@ export const loginUser = async (request, reply) => {
    });
   }
 
-  // compare password
   const isMatch = await bcrypt.compare(password, user.password);
 
   if (!isMatch) {
@@ -83,10 +81,13 @@ export const loginUser = async (request, reply) => {
    });
   }
 
-  // login success
   return {
    success: true,
-   username: user.username
+   user: {
+    _id: user._id,
+    username: user.username,
+    mobile: user.mobile
+   }
   };
 
  } catch (error) {

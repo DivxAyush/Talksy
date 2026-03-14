@@ -3,22 +3,38 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 export default function ChatUser({ route, navigation }) {
 
  const { user } = route.params;
 
  // TODO: login ke baad apna userId yaha set karna
- const senderId = "YOUR_LOGIN_USER_ID";
  const receiverId = user._id || user.id;
  const [messages, setMessages] = useState([]);
  const [text, setText] = useState("");
+const [senderId, setSenderId] = useState("");
 
+useEffect(() => {
+
+ const getUser = async () => {
+
+  const id = await AsyncStorage.getItem("userId");
+  console.log("Sender:", id);
+
+  setSenderId(id);
+
+ };
+
+ getUser();
+
+}, []);
  // GET MESSAGES
  const loadMessages = async () => {
   try {
-
-   const res = await axios.get(`http://YOUR_IP:5000/api/messages/messages/${senderId}/${receiverId}`);
+console.log("Sender:", senderId);
+console.log("Receiver:", receiverId);
+console.log("Message:", text);
+   const res = await axios.get(`https://talksy-3py1.onrender.com/api/messages/messages/${senderId}/${receiverId}`);
 
    setMessages(res.data.messages);
 
@@ -32,20 +48,28 @@ export default function ChatUser({ route, navigation }) {
  }, []);
 
  // SEND MESSAGE
- const sendMessage = async () => {
+const sendMessage = async () => {
 
-  if (!text.trim()) return;
+ if (!senderId) return;   // 👈 yaha lagana hai
+ if (!text.trim()) return;
 
-  try {
-   await axios.post("https://talksy-3py1.onrender.com/api/messages/send-message", { senderId, receiverId, message: text });
-   setText("");
-   loadMessages();
+ try {
+console.log("Sender:", senderId);
+console.log("Receiver:", receiverId);
+console.log("Message:", text);
+  await axios.post(
+   "https://talksy-3py1.onrender.com/api/messages/send-message",
+   { senderId, receiverId, message: text }
+  );
 
-  } catch (err) {
-   console.log(err);
-  }
+  setText("");
+  loadMessages();
 
- };
+ } catch (err) {
+ console.log("ERROR:", err.response?.data);
+}
+
+};
 
  const renderItem = ({ item }) => {
 
