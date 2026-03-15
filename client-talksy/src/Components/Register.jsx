@@ -25,6 +25,8 @@ export default function Register({ setIsLoggedIn }) {
   }
  };
 
+
+
  const validate = () => {
 
   let newErrors = {};
@@ -132,12 +134,11 @@ export default function Register({ setIsLoggedIn }) {
      style={[styles.input, errors.mobile && styles.errorBorder]}
      placeholder="Enter mobile number"
      keyboardType="number-pad"
+     maxLength={10}
      value={mobile}
      onChangeText={(text) => {
-      const cleaned = text.replace(/[^0-9]/g, "");
-      if (cleaned.length <= 10) {
-       setMobile(cleaned);
-      }
+      const cleaned = text.replace(/[^0-9]/g, "").slice(0, 10);
+      setMobile(cleaned);
       clearError("mobile");
      }}
     />
@@ -157,8 +158,10 @@ export default function Register({ setIsLoggedIn }) {
      <TextInput
       style={styles.passwordInput}
       placeholder="Create password"
-      secureTextEntry={!showPassword}
       value={password}
+      secureTextEntry={!showPassword}
+      autoCapitalize="none"
+      autoCorrect={false}
       onChangeText={(text) => {
        setPassword(text);
        clearError("password");
@@ -166,12 +169,14 @@ export default function Register({ setIsLoggedIn }) {
      />
 
      <TouchableOpacity
-      onPressIn={() => setShowPassword(true)}
-      onPressOut={() => setShowPassword(false)}
+      onPress={() => setShowPassword(!showPassword)}
      >
-      <Ionicons name="eye-outline" size={20} color="gray" />
+      <Ionicons
+       name={showPassword ? "eye-off-outline" : "eye-outline"}
+       size={20}
+       color="gray"
+      />
      </TouchableOpacity>
-
     </View>
 
     {errors.password && <Text style={styles.error}>{errors.password}</Text>}
@@ -190,8 +195,10 @@ export default function Register({ setIsLoggedIn }) {
      <TextInput
       style={styles.passwordInput}
       placeholder="Re-enter password"
-      secureTextEntry={!showConfirm}
       value={confirmPassword}
+      secureTextEntry={!showConfirm}
+      autoCapitalize="none"
+      autoCorrect={false}
       onChangeText={(text) => {
        setConfirmPassword(text);
        clearError("confirmPassword");
@@ -199,10 +206,13 @@ export default function Register({ setIsLoggedIn }) {
      />
 
      <TouchableOpacity
-      onPressIn={() => setShowConfirm(true)}
-      onPressOut={() => setShowConfirm(false)}
+      onPress={() => setShowConfirm(!showConfirm)}
      >
-      <Ionicons name="eye-outline" size={20} color="gray" />
+      <Ionicons
+       name={showConfirm ? "eye-off-outline" : "eye-outline"}
+       size={20}
+       color="gray"
+      />
      </TouchableOpacity>
 
     </View>

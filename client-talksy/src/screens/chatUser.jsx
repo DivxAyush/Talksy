@@ -48,6 +48,17 @@ useEffect(() => {
   loadMessages();
  }
 }, [senderId]);
+useEffect(() => {
+
+ if (!senderId) return;
+
+ const interval = setInterval(() => {
+  loadMessages();
+ }, 3000); // 3 seconds
+
+ return () => clearInterval(interval);
+
+}, [senderId]);
 
  // SEND MESSAGE
  const sendMessage = async () => {
