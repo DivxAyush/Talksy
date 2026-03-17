@@ -4,11 +4,11 @@
     "slug": "client-talksy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logotalksy.png",
+    "icon": "./assets/TalksyAppIcon.png",
     "userInterfaceStyle": "light",
 
     "splash": {
-      "image": "./assets/splash2.png",
+      "image": "./assets/TalksySS.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.talksy.chat",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logotalksy.png",
+        "foregroundImage": "./assets/TalksyAppIcon.png",
         "backgroundColor": "#ffffff"
       }
     },
