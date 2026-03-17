@@ -26,15 +26,15 @@ export const registerUser = async (request, reply) => {
 
   await user.save();
 
-return {
- success: true,
- message: "User registered successfully",
- user: {
-  _id: user._id,
-  username: user.username,
-  mobile: user.mobile
- }
-};
+  return {
+   success: true,
+   message: "User registered successfully",
+   user: {
+    _id: user._id,
+    username: user.username,
+    mobile: user.mobile
+   }
+  };
 
  } catch (error) {
 
