@@ -12,6 +12,7 @@ import Settings from "./src/screens/Settings";
 import Profile from "./src/screens/Profile";
 import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
+import { ChatProvider } from "./src/context/ChatContext";
 import { SocketProvider } from "./src/context/SocketContext";
 
 const Stack = createNativeStackNavigator();
@@ -44,34 +45,36 @@ const MainApp = () => {
  };
 
  return (
-  <SocketProvider isLoggedIn={isLoggedIn}>
-   <NavigationContainer theme={navTheme}>
-    <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-     {isLoggedIn ? (
-      <>
-       <Stack.Screen name="Home">
-        {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
-       </Stack.Screen>
-       <Stack.Screen name="chatUser" component={ChatUser} />
-       <Stack.Screen name="Settings" options={{ animation: "slide_from_right" }}>
-        {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
-       </Stack.Screen>
-       <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
-      </>
-     ) : (
-      <>
-       <Stack.Screen name="Login">
-        {(props) => <Login {...props} setIsLoggedIn={setIsLoggedIn} />}
-       </Stack.Screen>
-       <Stack.Screen name="Register">
-        {(props) => <Register {...props} setIsLoggedIn={setIsLoggedIn} />}
-       </Stack.Screen>
-      </>
-     )}
-    </Stack.Navigator>
-   </NavigationContainer>
-  </SocketProvider>
+  <ChatProvider>
+   <SocketProvider isLoggedIn={isLoggedIn}>
+    <NavigationContainer theme={navTheme}>
+     <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
+     <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {isLoggedIn ? (
+       <>
+        <Stack.Screen name="Home">
+         {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
+        </Stack.Screen>
+        <Stack.Screen name="chatUser" component={ChatUser} />
+        <Stack.Screen name="Settings" options={{ animation: "slide_from_right" }}>
+         {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
+        </Stack.Screen>
+        <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
+       </>
+      ) : (
+       <>
+        <Stack.Screen name="Login">
+         {(props) => <Login {...props} setIsLoggedIn={setIsLoggedIn} />}
+        </Stack.Screen>
+        <Stack.Screen name="Register">
+         {(props) => <Register {...props} setIsLoggedIn={setIsLoggedIn} />}
+        </Stack.Screen>
+       </>
+      )}
+     </Stack.Navigator>
+    </NavigationContainer>
+   </SocketProvider>
+  </ChatProvider>
  );
 };
 
