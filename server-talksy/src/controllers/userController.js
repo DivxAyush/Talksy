@@ -6,13 +6,30 @@ export const registerUser = async (request, reply) => {
 
   const { username, mobile, password } = request.body;
 
-  // check existing user
-  const existingUser = await MastUser.findOne({ mobile });
+  // Validate username (no spaces, only alphanumeric, _, @)
+  const usernameRegex = /^[a-zA-Z0-9_@]+$/;
+  if (!usernameRegex.test(username)) {
+   return reply.code(400).send({
+    success: false,
+    message: "Username can only contain letters, numbers, _ and @"
+   });
+  }
 
-  if (existingUser) {
+  // check existing mobile
+  const existingMobile = await MastUser.findOne({ mobile });
+  if (existingMobile) {
    return reply.code(400).send({
     success: false,
     message: "Mobile number already registered"
+   });
+  }
+
+  // check existing username
+  const existingUsername = await MastUser.findOne({ username });
+  if (existingUsername) {
+   return reply.code(400).send({
+    success: false,
+    message: "Username already taken"
    });
   }
 
@@ -111,12 +128,12 @@ export const loginUser = async (request, reply) => {
 export const updateProfile = async (request, reply) => {
  try {
   const { userId } = request.params;
-  const { name, about, profilePic } = request.body;
-
-  const updateData = { name, about };
-  if (profilePic !== undefined) {
-   updateData.profilePic = profilePic;
-  }
+  const { username, name, about, profilePic } = request.body;
+ 
+  const updateData = { about };
+  if (username !== undefined) updateData.username = username;
+  if (name !== undefined) updateData.name = name;
+  if (profilePic !== undefined) updateData.profilePic = profilePic;
 
   const user = await MastUser.findByIdAndUpdate(
    userId,
