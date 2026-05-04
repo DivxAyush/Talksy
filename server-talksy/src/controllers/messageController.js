@@ -1,5 +1,7 @@
 import UserMessage from "../models/userMessage.js";
+import MastUser from "../models/userModel.js";
 import { getReceiverSocketId, io } from "../socket/socket.js";
+import { sendPushNotification } from "../utils/pushNotification.js";
 import mongoose from "mongoose";
 
 // ─── Send Message ───
@@ -33,6 +35,10 @@ export const sendMessage = async (request, reply) => {
             await UserMessage.findByIdAndUpdate(newMessage._id, { status: "delivered" });
             populatedMessage.status = "delivered";
 
+            // Attach sender name for notification display
+            const sender = await MastUser.findById(senderId).select("username name").lean();
+            populatedMessage.senderName = sender?.name || sender?.username || "Someone";
+
             io.to(receiverSocketId).emit("newMessage", populatedMessage);
 
             // Also notify sender about the delivery status upgrade
@@ -42,6 +48,30 @@ export const sendMessage = async (request, reply) => {
                     messageId: newMessage._id.toString(),
                     status: "delivered"
                 });
+            }
+        } else {
+            // Receiver is OFFLINE — send push notification 📲
+            try {
+                const [receiver, sender] = await Promise.all([
+                    MastUser.findById(receiverId).select("pushToken").lean(),
+                    MastUser.findById(senderId).select("username name").lean()
+                ]);
+
+                if (receiver?.pushToken) {
+                    const senderName = sender?.name || sender?.username || "Someone";
+                    await sendPushNotification(
+                        receiver.pushToken,
+                        senderName,
+                        message,
+                        {
+                            type: "new_message",
+                            senderId,
+                            messageId: newMessage._id.toString()
+                        }
+                    );
+                }
+            } catch (pushErr) {
+                console.error("Push notification error:", pushErr.message);
             }
         }
 

@@ -22,12 +22,26 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/TalksyAppIcon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "NOTIFICATIONS",
+        "VIBRATE"
+      ]
     },
 
     "web": {
       "favicon": "./assets/favicon.png"
     },
+
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/TalksyAppIcon.png",
+          "color": "#25D366"
+        }
+      ]
+    ],
 
     "extra": {
       "eas": {

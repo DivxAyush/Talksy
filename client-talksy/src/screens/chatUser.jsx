@@ -311,7 +311,10 @@ export default function ChatUser({ route, navigation }) {
 
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
-            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} enabled={Platform.OS === "ios"}>
+            <KeyboardAvoidingView 
+                style={{ flex: 1 }} 
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
                 {/* Header */}
                 <View style={[s.header, { backgroundColor: headerBg, borderBottomColor: border }]}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
@@ -341,7 +344,7 @@ export default function ChatUser({ route, navigation }) {
                 </View>
 
                 {/* Messages */}
-                <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
+                <View style={{ flex: 1 }}>
                     {loading ? (
                         <View style={s.loaderWrap}><ActivityIndicator size="large" color={textMain} /></View>
                     ) : (
@@ -352,6 +355,8 @@ export default function ChatUser({ route, navigation }) {
                             renderItem={({ item }) => <MessageBubble item={item} />}
                             contentContainerStyle={s.msgList}
                             showsVerticalScrollIndicator={false}
+                            keyboardDismissMode="on-drag"
+                            onLayout={() => page === 1 && flatRef.current?.scrollToEnd({ animated: false })}
                             onContentSizeChange={() => page === 1 && flatRef.current?.scrollToEnd({ animated: false })}
                             keyboardShouldPersistTaps="handled"
                             onScroll={({ nativeEvent }) => {
@@ -371,7 +376,7 @@ export default function ChatUser({ route, navigation }) {
                             }
                         />
                     )}
-                </Pressable>
+                </View>
 
                 {/* Reply Preview */}
                 {replyMsg && (
@@ -459,7 +464,7 @@ const s = StyleSheet.create({
     headerActions: { flexDirection: "row", gap: 4 },
     headerIconBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
     loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
-    msgList: { flexGrow: 1, paddingHorizontal: 16, paddingVertical: 12 },
+    msgList: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
     bubbleWrap: { marginBottom: 6, maxWidth: "78%" },
     bubbleRight: { alignSelf: "flex-end" },
     bubbleLeft: { alignSelf: "flex-start" },

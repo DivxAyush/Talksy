@@ -27,6 +27,10 @@ const mastUserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true
+  },
+  pushToken: {
+    type: String,
+    default: ""
   }
 }, { timestamps: true });
 

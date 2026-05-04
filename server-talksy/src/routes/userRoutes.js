@@ -1,4 +1,4 @@
-import { getUsers, loginUser, registerUser, updateProfile } from "../controllers/userController.js";
+import { getUsers, loginUser, registerUser, updateProfile, savePushToken } from "../controllers/userController.js";
 import UserMessage from "../models/userMessage.js";
 
 export default async function userRoutes(fastify, options) {
@@ -6,4 +6,5 @@ export default async function userRoutes(fastify, options) {
   fastify.get("/users", getUsers);
   fastify.post("/login", loginUser);
   fastify.put("/profile/:userId", updateProfile);
+  fastify.post("/push-token", savePushToken);
 }

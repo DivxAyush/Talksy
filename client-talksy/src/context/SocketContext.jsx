@@ -1,8 +1,9 @@
 import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from "react";
+import { AppState } from "react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChatContext } from "./ChatContext";
-
+import { showLocalNotification } from "../utils/notificationService";
 export const SocketContext = createContext();
 
 export const SocketProvider = ({ children, isLoggedIn }) => {
@@ -13,7 +14,8 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const {
         updateConversationWithMessage,
         updateConversationMessageStatus,
-        fetchConversations
+        fetchConversations,
+        getCurrentChat
     } = useContext(ChatContext);
 
     // Refs for message handlers that screens can register
@@ -79,13 +81,32 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                     });
 
                     // ─── New Message ───
-                    newSocket.on("newMessage", (message) => {
+                    newSocket.on("newMessage", async (message) => {
                         // Forward to chat screen handler if registered
                         if (messageHandlerRef.current) {
                             messageHandlerRef.current(message);
                         }
                         // Update conversations list
                         updateConversationWithMessage(message);
+
+                        // 📲 Show local notification if NOT viewing sender's chat
+                        const currentChat = getCurrentChat();
+                        if (message.senderId !== currentChat) {
+                            try {
+                                // Try to get sender name from conversations
+                                const senderName = message.senderName || "New Message";
+                                await showLocalNotification(
+                                    senderName,
+                                    message.message || "Sent you a message",
+                                    {
+                                        type: "new_message",
+                                        senderId: message.senderId,
+                                    }
+                                );
+                            } catch (err) {
+                                console.log("Local notification error:", err);
+                            }
+                        }
                     });
 
                     // ─── Message Status Update (sent → delivered) ───

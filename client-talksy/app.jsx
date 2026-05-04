@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useContext } from "react";
-import { StatusBar } from "react-native";
+import React, { useEffect, useState, useContext, useRef } from "react";
+import { StatusBar, AppState } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
 
 import Login from "./src/Components/Login";
 import Register from "./src/Components/Register";
@@ -14,6 +15,7 @@ import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { ChatProvider } from "./src/context/ChatContext";
 import { SocketProvider } from "./src/context/SocketContext";
+import { initializePushNotifications } from "./src/utils/notificationService";
 
 const Stack = createNativeStackNavigator();
 
@@ -21,6 +23,8 @@ const MainApp = () => {
  const [loading, setLoading] = useState(true);
  const [isLoggedIn, setIsLoggedIn] = useState(false);
  const { isDark } = useContext(ThemeContext);
+ const navigationRef = useRef(null);
+ const notificationResponseListener = useRef(null);
 
  const checkLogin = async () => {
   try {
@@ -33,6 +37,38 @@ const MainApp = () => {
  };
 
  useEffect(() => { checkLogin(); }, []);
+
+ // ─── Initialize Push Notifications when logged in ───
+ useEffect(() => {
+  if (isLoggedIn) {
+   initializePushNotifications();
+  }
+ }, [isLoggedIn]);
+
+ // ─── Handle notification tap → navigate to chat ───
+ useEffect(() => {
+  notificationResponseListener.current =
+   Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data;
+    if (data?.type === "new_message" && data?.senderId) {
+     // Navigate to the chat with the sender
+     // We'll navigate once navigation is ready
+     setTimeout(() => {
+      if (navigationRef.current) {
+       navigationRef.current.navigate("chatUser", {
+        user: { _id: data.senderId }
+       });
+      }
+     }, 500);
+    }
+   });
+
+  return () => {
+   if (notificationResponseListener.current) {
+    Notifications.removeNotificationSubscription(notificationResponseListener.current);
+   }
+  };
+ }, []);
 
  if (loading) return <Splash />;
 
@@ -47,7 +83,7 @@ const MainApp = () => {
  return (
   <ChatProvider>
    <SocketProvider isLoggedIn={isLoggedIn}>
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} ref={navigationRef}>
      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
      <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isLoggedIn ? (

@@ -167,3 +167,29 @@ export const updateProfile = async (request, reply) => {
   });
  }
 };
+
+// ─── Save Push Notification Token ───
+export const savePushToken = async (request, reply) => {
+ try {
+  const { userId, pushToken } = request.body;
+
+  if (!userId || !pushToken) {
+   return reply.code(400).send({
+    success: false,
+    message: "userId and pushToken are required"
+   });
+  }
+
+  await MastUser.findByIdAndUpdate(userId, { pushToken });
+
+  return {
+   success: true,
+   message: "Push token saved successfully"
+  };
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};
