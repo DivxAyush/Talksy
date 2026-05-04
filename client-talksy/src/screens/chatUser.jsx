@@ -96,9 +96,9 @@ export default function ChatUser({ route, navigation }) {
             const { data } = await axios.get(`${API}/messages/${senderId}/${receiverId}?page=${pg}&limit=50`);
             if (data.success) {
                 if (append) {
-                    setMessages(prev => [...data.messages, ...prev]);
+                    setMessages(prev => [...prev, ...data.messages.reverse()]);
                 } else {
-                    setMessages(data.messages);
+                    setMessages(data.messages.reverse());
                 }
                 setHasMore(data.pagination?.hasMore || false);
                 setPage(pg);
@@ -113,12 +113,11 @@ export default function ChatUser({ route, navigation }) {
     useEffect(() => {
         registerMessageHandler((msg) => {
             if (msg.senderId === receiverId) {
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => [msg, ...prev]);
                 // Mark as read immediately since we're viewing this chat
                 if (socket) {
                     socket.emit("message_read", { messageIds: [msg._id], senderId: msg.senderId });
                 }
-                setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
             }
         });
         registerStatusHandler((msgId, status) => {
@@ -187,10 +186,9 @@ export default function ChatUser({ route, navigation }) {
             if (replyMsg) payload.replyTo = replyMsg._id;
             const { data } = await axios.post(`${API}/send-message`, payload);
             if (data.success && data.data) {
-                setMessages(prev => [...prev, data.data]);
+                setMessages(prev => [data.data, ...prev]);
                 setReplyMsg(null);
             }
-            setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
         } catch (err) { setText(msg); }
         finally { setSending(false); }
     };
@@ -313,7 +311,7 @@ export default function ChatUser({ route, navigation }) {
         <View style={[s.container, { backgroundColor: bg }]}>
             <KeyboardAvoidingView 
                 style={{ flex: 1 }} 
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                behavior="padding"
             >
                 {/* Header */}
                 <View style={[s.header, { backgroundColor: headerBg, borderBottomColor: border }]}>
@@ -356,17 +354,15 @@ export default function ChatUser({ route, navigation }) {
                             contentContainerStyle={s.msgList}
                             showsVerticalScrollIndicator={false}
                             keyboardDismissMode="on-drag"
-                            onLayout={() => page === 1 && flatRef.current?.scrollToEnd({ animated: false })}
-                            onContentSizeChange={() => page === 1 && flatRef.current?.scrollToEnd({ animated: false })}
+                            inverted={true}
                             keyboardShouldPersistTaps="handled"
-                            onScroll={({ nativeEvent }) => {
-                                if (nativeEvent.contentOffset.y < 50 && hasMore && !loadingMore) {
-                                    loadOlderMessages();
-                                }
+                            onEndReached={() => {
+                                if (hasMore && !loadingMore) loadOlderMessages();
                             }}
+                            onEndReachedThreshold={0.5}
                             scrollEventThrottle={400}
-                            ListHeaderComponent={loadingMore ? <ActivityIndicator size="small" color={textSub} style={{ marginVertical: 10 }} /> : null}
-                            ListFooterComponent={isReceiverTyping ? <TypingBubble /> : null}
+                            ListHeaderComponent={isReceiverTyping ? <TypingBubble /> : null}
+                            ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={textSub} style={{ marginVertical: 10 }} /> : null}
                             ListEmptyComponent={
                                 <View style={s.emptyWrap}>
                                     <Ionicons name="chatbubble-ellipses-outline" size={48} color={border} />
@@ -464,7 +460,7 @@ const s = StyleSheet.create({
     headerActions: { flexDirection: "row", gap: 4 },
     headerIconBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
     loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
-    msgList: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
+    msgList: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, justifyContent: "flex-end" },
     bubbleWrap: { marginBottom: 6, maxWidth: "78%" },
     bubbleRight: { alignSelf: "flex-end" },
     bubbleLeft: { alignSelf: "flex-start" },
@@ -485,7 +481,7 @@ const s = StyleSheet.create({
     replyBarTxt: { fontSize: 13 },
     // Typing dots
     typingDot: { width: 8, height: 8, borderRadius: 4 },
-    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 6 },
+    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 6, transform: [{ scaleY: -1 }] },
     emptyTxt: { fontSize: 16, fontWeight: "600" },
     emptySub: { fontSize: 13 },
     inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: 1 },

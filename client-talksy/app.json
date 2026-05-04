@@ -19,6 +19,7 @@
 
     "android": {
       "package": "com.talksy.chat",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/TalksyAppIcon.png",
         "backgroundColor": "#ffffff"
