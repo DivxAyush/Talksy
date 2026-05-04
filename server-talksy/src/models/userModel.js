@@ -6,6 +6,18 @@ const mastUserSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  name: {
+    type: String,
+    default: ""
+  },
+  about: {
+    type: String,
+    default: "Hey there! I am using Talksy."
+  },
+  profilePic: {
+    type: String,
+    default: ""
+  },
   mobile: {
     type: String,
     required: true,
