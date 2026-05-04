@@ -1,17 +1,20 @@
 import UserMessage from "../models/userMessage.js";
+import { getReceiverSocketId, io } from "../socket/socket.js";
 
 export const sendMessage = async (request, reply) => {
  try {
 
   const { senderId, receiverId, message } = request.body;
 
-  const newMessage = new UserMessage({
-   senderId,
-   receiverId,
-   message
-  });
+  const newMessage = new UserMessage({ senderId, receiverId, message });
 
   await newMessage.save();
+
+  // SOCKET functionality to emit message in real-time
+  const receiverSocketId = getReceiverSocketId(receiverId);
+  if (receiverSocketId) {
+   io.to(receiverSocketId).emit("newMessage", newMessage);
+  }
 
   return {
    success: true,
@@ -49,10 +52,7 @@ export const getMessages = async (request, reply) => {
 
  } catch (error) {
 
-  reply.code(500).send({
-   success: false,
-   message: error.message
-  });
+  reply.code(500).send({ success: false, message: error.message });
 
  }
 };

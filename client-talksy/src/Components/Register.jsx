@@ -1,412 +1,192 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { Ionicons, FontAwesome } from "@expo/vector-icons";
+import {
+ View, Text, TextInput, TouchableOpacity, StyleSheet,
+ ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Switch,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-export default function Register({ setIsLoggedIn }) {
+import SuccessPopup from "./SuccessPopup";
 
+const API = "https://talksy-3py1.onrender.com/api/users";
+
+export default function Register({ setIsLoggedIn }) {
  const [name, setName] = useState("");
  const [mobile, setMobile] = useState("");
  const [password, setPassword] = useState("");
- const [confirmPassword, setConfirmPassword] = useState("");
  const [errors, setErrors] = useState({});
- const [checked, setChecked] = useState(false);
  const [loading, setLoading] = useState(false);
- const [showPassword, setShowPassword] = useState(false);
- const [showConfirm, setShowConfirm] = useState(false);
- const navigation = useNavigation();
- // MOBILE VALIDATION
- const handleMobile = (text) => {
-  const cleaned = text.replace(/[^0-9]/g, "");
-  if (cleaned.length <= 10) {
-   setMobile(cleaned);
-  }
- };
-
-
+ const [showPwd, setShowPwd] = useState(false);
+ const [agreed, setAgreed] = useState(false);
+ const [showSuccess, setShowSuccess] = useState(false);
+ const nav = useNavigation();
 
  const validate = () => {
-
-  let newErrors = {};
-
-  if (!name.trim()) {
-   newErrors.name = "Name required";
-  }
-  if (mobile.length !== 10) {
-   newErrors.mobile = "Enter 10 digit mobile number";
-  }
-  if (password.length < 6) {
-   newErrors.password = "Password must be at least 6 characters";
-  }
-  if (confirmPassword !== password) {
-   newErrors.confirmPassword = "Passwords do not match";
-  }
-  if (!checked) {
-   newErrors.privacy = "Accept privacy policy";
-  }
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
+  const e = {};
+  if (!name.trim()) e.name = "Full name is required";
+  else if (name.trim().length < 2) e.name = "Name must be at least 2 characters";
+  if (!/^\d{10}$/.test(mobile)) e.mobile = "Enter valid 10-digit mobile number";
+  if (!password.trim()) e.password = "Password is required";
+  else if (password.length < 6) e.password = "Minimum 6 characters";
+  if (!agreed) e.terms = "Please accept Terms & Privacy Policy";
+  setErrors(e);
+  return !Object.keys(e).length;
  };
- const clearError = (field) => {
-  setErrors((prev) => ({ ...prev, [field]: null }));
- };
+
+ const clearErr = (f) => setErrors((p) => ({ ...p, [f]: null }));
 
  const handleRegister = async () => {
-
   if (!validate()) return;
-
   try {
    setLoading(true);
-
-   const payload = {
-    username: name,
-    mobile: mobile,
-    password: password
-   };
-
-   const res = await axios.post("https://talksy-3py1.onrender.com/api/users/register", payload);
-
-   if (res.data.success) {
-
-    const user = res.data.user;
-
-    await AsyncStorage.setItem("userId", user._id);
-
-    await AsyncStorage.setItem(
-     "user",
-     JSON.stringify(user)
-    );
-
+   setErrors({});
+   const { data } = await axios.post(`${API}/register`, {
+    username: name.trim(),
+    mobile,
+    password,
+   });
+   if (data.success) {
+    await AsyncStorage.multiSet([
+     ["userId", data.user._id],
+     ["user", JSON.stringify(data.user)],
+    ]);
     setName("");
     setMobile("");
     setPassword("");
-    setConfirmPassword("");
-    setChecked(false);
-    setErrors({});
-
-    setIsLoggedIn(true);
-
+    setAgreed(false);
+    setShowSuccess(true);
    }
   } catch (err) {
-   alert(err?.response?.data?.message || "Server not reachable");
-
+   setErrors({ api: err?.response?.data?.message || "Registration failed. Please try again." });
   } finally {
    setLoading(false);
   }
  };
 
  return (
+  <View style={s.container}>
+   <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+    <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-  <View style={styles.container}>
+     {/* Back */}
+     {nav.canGoBack() && (
+      <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
+       <Ionicons name="arrow-back" size={22} color="#1a1a2e" />
+      </TouchableOpacity>
+     )}
 
-   {/* HEADER */}
-   <LinearGradient
-    colors={["#5f7cff", "#4a60e0"]}
-    style={styles.header}
-   >
-    <Text style={styles.headerTitle}>Create Account</Text>
-    <Text style={styles.headerSub}>Sign up to continue</Text>
-   </LinearGradient>
+     {/* Header */}
+     <Text style={s.title}>Create your account</Text>
+     <Text style={s.sub}>Provide your full name, mobile, and password{"\n"}to create your account and get started.</Text>
 
-   <View style={styles.form}>
-
-    {/* NAME */}
-    <Text style={styles.label}>Name</Text>
-
-    <TextInput
-     style={[styles.input, errors.name && styles.errorBorder]}
-     placeholder="Enter your name"
-     value={name}
-     onChangeText={(text) => {
-      setName(text);
-      clearError("name");
-     }}
-    />
-
-    {errors.name && <Text style={styles.error}>{errors.name}</Text>}
-
-    {/* MOBILE */}
-    <Text style={styles.label}>Mobile Number</Text>
-
-    <TextInput
-     style={[styles.input, errors.mobile && styles.errorBorder]}
-     placeholder="Enter mobile number"
-     keyboardType="number-pad"
-     maxLength={10}
-     value={mobile}
-     onChangeText={(text) => {
-      const cleaned = text.replace(/[^0-9]/g, "").slice(0, 10);
-      setMobile(cleaned);
-      clearError("mobile");
-     }}
-    />
-
-    {errors.mobile && <Text style={styles.error}>{errors.mobile}</Text>}
-
-    {/* PASSWORD */}
-    <Text style={styles.label}>Password</Text>
-
-    <View
-     style={[
-      styles.passwordBox,
-      errors.password && styles.errorBorder
-     ]}
-    >
-
+     {/* Full Name */}
+     <Text style={s.label}>Full Name</Text>
      <TextInput
-      style={styles.passwordInput}
-      placeholder="Create password"
-      value={password}
-      secureTextEntry={!showPassword}
-      autoCapitalize="none"
-      autoCorrect={false}
-      onChangeText={(text) => {
-       setPassword(text);
-       clearError("password");
-      }}
+      style={[s.input, errors.name && s.errB]}
+      placeholder="Enter your full name"
+      placeholderTextColor="#aaa"
+      autoCapitalize="words"
+      value={name}
+      onChangeText={(t) => { setName(t); clearErr("name"); }}
      />
+     {errors.name && <Text style={s.err}>{errors.name}</Text>}
 
-     <TouchableOpacity
-      onPress={() => setShowPassword(!showPassword)}
-     >
-      <Ionicons
-       name={showPassword ? "eye-off-outline" : "eye-outline"}
-       size={20}
-       color="gray"
-      />
-     </TouchableOpacity>
-    </View>
-
-    {errors.password && <Text style={styles.error}>{errors.password}</Text>}
-
-    {/* CONFIRM PASSWORD */}
-
-    <Text style={styles.label}>Confirm Password</Text>
-
-    <View
-     style={[
-      styles.passwordBox,
-      errors.confirmPassword && styles.errorBorder
-     ]}
-    >
-
+     {/* Mobile */}
+     <Text style={s.label}>Mobile Number</Text>
      <TextInput
-      style={styles.passwordInput}
-      placeholder="Re-enter password"
-      value={confirmPassword}
-      secureTextEntry={!showConfirm}
-      autoCapitalize="none"
-      autoCorrect={false}
-      onChangeText={(text) => {
-       setConfirmPassword(text);
-       clearError("confirmPassword");
-      }}
+      style={[s.input, errors.mobile && s.errB]}
+      placeholder="Enter mobile number"
+      placeholderTextColor="#aaa"
+      keyboardType="number-pad"
+      maxLength={10}
+      value={mobile}
+      onChangeText={(t) => { setMobile(t.replace(/\D/g, "").slice(0, 10)); clearErr("mobile"); }}
      />
+     {errors.mobile && <Text style={s.err}>{errors.mobile}</Text>}
 
-     <TouchableOpacity
-      onPress={() => setShowConfirm(!showConfirm)}
-     >
-      <Ionicons
-       name={showConfirm ? "eye-off-outline" : "eye-outline"}
-       size={20}
-       color="gray"
+     {/* Password */}
+     <Text style={s.label}>Password</Text>
+     <View style={[s.passBox, errors.password && s.errB]}>
+      <TextInput
+       style={s.passInput}
+       placeholder="Create password"
+       placeholderTextColor="#aaa"
+       secureTextEntry={!showPwd}
+       autoCapitalize="none"
+       autoCorrect={false}
+       value={password}
+       onChangeText={(t) => { setPassword(t); clearErr("password"); }}
       />
+      <TouchableOpacity onPress={() => setShowPwd(!showPwd)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+       <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color="#888" />
+      </TouchableOpacity>
+     </View>
+     {errors.password && <Text style={s.err}>{errors.password}</Text>}
+
+     {/* Terms */}
+     <View style={s.termsRow}>
+      <Switch
+       value={agreed}
+       onValueChange={(v) => { setAgreed(v); clearErr("terms"); }}
+       trackColor={{ false: "#ddd", true: "#1a1a2e" }}
+       thumbColor="#fff"
+       style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+      />
+      <Text style={s.termsTxt}>
+       I agree to the <Text style={s.termsLink}>Terms & Privacy Policy</Text>
+      </Text>
+     </View>
+     {errors.terms && <Text style={s.err}>{errors.terms}</Text>}
+
+     {/* API Error */}
+     {errors.api && <Text style={[s.err, { textAlign: "center", marginTop: 8 }]}>{errors.api}</Text>}
+
+     {/* Button */}
+     <TouchableOpacity style={[s.btn, loading && { opacity: 0.7 }]} onPress={handleRegister} disabled={loading} activeOpacity={0.8}>
+      {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnTxt}>Sign Up</Text>}
      </TouchableOpacity>
 
-    </View>
-
-    {errors.confirmPassword &&
-     <Text style={styles.error}>{errors.confirmPassword}</Text>
-    }
-
-    {/* PRIVACY */}
-
-    <TouchableOpacity
-     style={styles.checkboxRow}
-     onPress={() => setChecked(!checked)}
-    >
-     <Ionicons
-      name={checked ? "checkbox" : "square-outline"}
-      size={20}
-      color="#4a60e0"
-     />
-
-     <Text style={styles.checkboxText}>
-      I agree with privacy policy
+     {/* Link */}
+     <Text style={s.linkRow}>
+      Already have an account?{" "}
+      <Text style={s.linkBold} onPress={() => nav.navigate("Login")}>Sign In</Text>
      </Text>
-    </TouchableOpacity>
 
-    {errors.privacy && <Text style={styles.error}>{errors.privacy}</Text>}
+    </ScrollView>
+   </KeyboardAvoidingView>
 
-    {/* BUTTON */}
-
-    <TouchableOpacity
-     onPress={handleRegister}
-     disabled={loading}
-    >
-     <LinearGradient
-      colors={["#5f7cff", "#4a60e0"]}
-      style={styles.button}
-     >
-
-      {loading
-       ? <ActivityIndicator color="#fff" />
-       : <Text style={styles.buttonText}>Sign Up</Text>
-      }
-
-     </LinearGradient>
-    </TouchableOpacity>
-
-    <Text style={styles.or}>or sign up with</Text>
-
-    <View style={styles.socialRow}>
-
-     <TouchableOpacity style={styles.socialBtn}>
-      <FontAwesome name="google" size={20} color="#DB4437" />
-     </TouchableOpacity>
-
-     <TouchableOpacity style={styles.socialBtn}>
-      <FontAwesome name="apple" size={20} color="black" />
-     </TouchableOpacity>
-
-     <TouchableOpacity style={styles.socialBtn}>
-      <FontAwesome name="facebook" size={20} color="#1877F2" />
-     </TouchableOpacity>
-
-    </View>
-    <Text onPress={() => navigation.navigate("Login")} style={styles.LoginClick}>Already have an Account ? <Text style={styles.LoginText}>Login</Text></Text>
-
-
-   </View>
-
+   <SuccessPopup
+    visible={showSuccess}
+    title="Account Created! 🎉"
+    message="Your account is created successfully and ready now."
+    slogan="Time to connect & chat! 🚀"
+    onAutoClose={() => { setShowSuccess(false); setIsLoggedIn(true); }}
+   />
   </View>
  );
 }
 
-const styles = StyleSheet.create({
-
- LoginClick: {
-  fontSize: 15,
-  textAlign: "center",
-  marginTop: 15,
-  color: "#888"
+const s = StyleSheet.create({
+ container: { flex: 1, backgroundColor: "#fff" },
+ scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 56, paddingBottom: 30 },
+ backBtn: {
+  width: 42, height: 42, borderRadius: 12, borderWidth: 1.2,
+  borderColor: "#e5e5e5", justifyContent: "center", alignItems: "center", marginBottom: 28,
  },
- LoginText: {
-  fontWeight: 700,
-  color: "#5f7cff"
- },
-
-
- container: {
-  flex: 1,
-  backgroundColor: "#fff"
- },
-
- header: {
-  height: 230,
-  justifyContent: "center",
-  paddingHorizontal: 25
- },
-
- headerTitle: {
-  color: "#fff",
-  fontSize: 28,
-  fontWeight: "bold"
- },
-
- headerSub: {
-  color: "#fff",
-  marginTop: 5
- },
-
- form: {
-  padding: 20,
-  marginTop: -40,
-  backgroundColor: "#fff",
-  borderTopLeftRadius: 30,
-  borderTopRightRadius: 30
- },
-
- label: {
-  fontSize: 14,
-  marginTop: 10,
-  marginBottom: 5
- },
-
- input: {
-  borderWidth: 1,
-  borderColor: "#ddd",
-  borderRadius: 10,
-  padding: 12
- },
-
- passwordBox: {
-  flexDirection: "row",
-  alignItems: "center",
-  borderWidth: 1,
-  borderColor: "#ddd",
-  borderRadius: 10,
-  paddingHorizontal: 10
- },
-
- passwordInput: {
-  flex: 1,
-  padding: 12
- },
-
- checkboxRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginTop: 15
- },
-
- checkboxText: {
-  marginLeft: 8
- },
-
- button: {
-  marginTop: 20,
-  padding: 15,
-  borderRadius: 10,
-  alignItems: "center"
- },
-
- buttonText: {
-  color: "#fff",
-  fontWeight: "bold",
-  fontSize: 16
- },
-
- or: {
-  textAlign: "center",
-  marginTop: 15,
-  color: "#888"
- },
-
- socialRow: {
-  flexDirection: "row",
-  justifyContent: "space-around",
-  marginTop: 15
- },
-
- socialBtn: {
-  backgroundColor: "#f1f1f1",
-  padding: 12,
-  borderRadius: 10,
-  width: 60,
-  alignItems: "center"
- },
-
- error: {
-  color: "red",
-  fontSize: 12,
-  marginTop: 4
- },
-
- errorBorder: {
-  borderColor: "red"
- }
-
+ title: { fontSize: 28, fontWeight: "800", color: "#1a1a2e", marginBottom: 8 },
+ sub: { fontSize: 14, color: "#888", lineHeight: 20, marginBottom: 30 },
+ label: { fontSize: 13, color: "#888", marginBottom: 8, marginTop: 18 },
+ input: { borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5", paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
+ passBox: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5" },
+ passInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
+ errB: { borderBottomColor: "#e74c3c" },
+ err: { color: "#e74c3c", fontSize: 12, marginTop: 4 },
+ termsRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
+ termsTxt: { fontSize: 13, color: "#555", flex: 1 },
+ termsLink: { fontWeight: "700", color: "#1a1a2e" },
+ btn: { backgroundColor: "#1a1a2e", paddingVertical: 16, borderRadius: 14, alignItems: "center", marginTop: 32 },
+ btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
+ linkRow: { textAlign: "center", marginTop: 22, fontSize: 14, color: "#888" },
+ linkBold: { fontWeight: "700", color: "#1a1a2e" },
 });
