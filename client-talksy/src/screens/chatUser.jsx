@@ -25,7 +25,7 @@ const ATTACH_OPTIONS = [
 export default function ChatUser({ route, navigation }) {
     const { user } = route.params;
     const receiverId = user._id || user.id;
-    const userName = user.username || user.name || "User";
+    const userName = user.name || user.username || "User";
 
     const [messages, setMessages] = useState([]);
     const [text, setText] = useState("");

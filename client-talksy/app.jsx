@@ -54,7 +54,9 @@ const MainApp = () => {
         {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
        </Stack.Screen>
        <Stack.Screen name="chatUser" component={ChatUser} />
-       <Stack.Screen name="Settings" component={Settings} options={{ animation: "slide_from_right" }} />
+       <Stack.Screen name="Settings" options={{ animation: "slide_from_right" }}>
+        {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
+       </Stack.Screen>
        <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
       </>
      ) : (

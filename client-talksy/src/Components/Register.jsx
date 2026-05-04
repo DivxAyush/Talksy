@@ -12,7 +12,7 @@ import SuccessPopup from "./SuccessPopup";
 const API = "https://talksy-3py1.onrender.com/api/users";
 
 export default function Register({ setIsLoggedIn }) {
- const [name, setName] = useState("");
+ const [username, setUsername] = useState("");
  const [mobile, setMobile] = useState("");
  const [password, setPassword] = useState("");
  const [errors, setErrors] = useState({});
@@ -24,8 +24,9 @@ export default function Register({ setIsLoggedIn }) {
 
  const validate = () => {
   const e = {};
-  if (!name.trim()) e.name = "Full name is required";
-  else if (name.trim().length < 2) e.name = "Name must be at least 2 characters";
+  if (!username.trim()) e.username = "Username is required";
+  else if (username.trim().length < 3) e.username = "Username must be at least 3 characters";
+  else if (!/^[a-zA-Z0-9_]+$/.test(username)) e.username = "Only letters, numbers, and _ allowed (no spaces)";
   if (!/^\d{10}$/.test(mobile)) e.mobile = "Enter valid 10-digit mobile number";
   if (!password.trim()) e.password = "Password is required";
   else if (password.length < 6) e.password = "Minimum 6 characters";
@@ -42,7 +43,7 @@ export default function Register({ setIsLoggedIn }) {
    setLoading(true);
    setErrors({});
    const { data } = await axios.post(`${API}/register`, {
-    username: name.trim(),
+    username: username.trim(),
     mobile,
     password,
    });
@@ -51,7 +52,7 @@ export default function Register({ setIsLoggedIn }) {
      ["userId", data.user._id],
      ["user", JSON.stringify(data.user)],
     ]);
-    setName("");
+    setUsername("");
     setMobile("");
     setPassword("");
     setAgreed(false);
@@ -78,19 +79,19 @@ export default function Register({ setIsLoggedIn }) {
 
      {/* Header */}
      <Text style={s.title}>Create your account</Text>
-     <Text style={s.sub}>Provide your full name, mobile, and password{"\n"}to create your account and get started.</Text>
+     <Text style={s.sub}>Provide a unique username, mobile, and password{"\n"}to create your account and get started.</Text>
 
-     {/* Full Name */}
-     <Text style={s.label}>Full Name</Text>
+     {/* Username */}
+     <Text style={s.label}>Username</Text>
      <TextInput
-      style={[s.input, errors.name && s.errB]}
-      placeholder="Enter your full name"
+      style={[s.input, errors.username && s.errB]}
+      placeholder="e.g. talksy_user"
       placeholderTextColor="#aaa"
-      autoCapitalize="words"
-      value={name}
-      onChangeText={(t) => { setName(t); clearErr("name"); }}
+      autoCapitalize="none"
+      value={username}
+      onChangeText={(t) => { setUsername(t.replace(/\s/g, '')); clearErr("username"); }}
      />
-     {errors.name && <Text style={s.err}>{errors.name}</Text>}
+     {errors.username && <Text style={s.err}>{errors.username}</Text>}
 
      {/* Mobile */}
      <Text style={s.label}>Mobile Number</Text>

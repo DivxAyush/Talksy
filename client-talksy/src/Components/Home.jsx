@@ -77,7 +77,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
             </View>
             <View style={s.chatInfo}>
                 <View style={s.chatHeader}>
-                    <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>{item.username}</Text>
+                    <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>{item.name || item.username}</Text>
                     <Text style={[s.chatTime, { color: textSub }]}>Today</Text>
                 </View>
                 <Text style={[s.chatPreview, { color: textSub }]} numberOfLines={1}>Tap to view messages...</Text>
