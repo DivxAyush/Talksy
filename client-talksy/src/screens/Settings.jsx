@@ -126,7 +126,8 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                 {/* Settings List */}
                 <View style={s.settingsList}>
                     <SettingItem icon="settings-outline" title="Settings" />
-                    <SettingItem icon="lock-closed-outline" title="Change Password" onPress={openModal} />
+                    <SettingItem icon="code-sandbox" title="Appearance" onPress={openModal} />
+                    <SettingItem icon="lock-closed-outline" title="Change Password" />
 
                     <View style={[s.divider, { backgroundColor: isDark ? "#333" : "#eee", marginVertical: 10 }]} />
 

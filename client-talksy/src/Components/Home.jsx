@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useCallback } from "react";
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     Platform, ActivityIndicator, Image,
@@ -8,17 +8,25 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeContext } from "../context/ThemeContext";
 import { SocketContext } from "../context/SocketContext";
+import { ChatContext } from "../context/ChatContext";
+import { useFocusEffect } from "@react-navigation/native";
 
-const API = "https://talksy-3py1.onrender.com/api/users";
+const API_USERS = "https://talksy-3py1.onrender.com/api/users";
 
 export default function Home({ navigation, setIsLoggedIn }) {
     const [users, setUsers] = useState([]);
-    const [filteredUsers, setFilteredUsers] = useState([]);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    const [currentUserId, setCurrentUserId] = useState("");
 
     const { isDark } = useContext(ThemeContext);
     const { onlineUsers } = useContext(SocketContext);
+    const {
+        conversations,
+        fetchConversations,
+        loadingConversations,
+        setCurrentChat
+    } = useContext(ChatContext);
 
     // Dynamic Theme Colors
     const bg = isDark ? "#111b21" : "#fff";
@@ -27,6 +35,14 @@ export default function Home({ navigation, setIsLoggedIn }) {
     const textSub = isDark ? "#8696a0" : "#666";
     const border = isDark ? "#202c33" : "#f0f0f0";
     const iconBtnBg = isDark ? "#2a3942" : "#f5f5f5";
+    const accentGreen = "#25D366";
+
+    useEffect(() => {
+        (async () => {
+            const id = await AsyncStorage.getItem("userId");
+            if (id) setCurrentUserId(id);
+        })();
+    }, []);
 
     const handleLogout = async () => {
         await AsyncStorage.clear();
@@ -35,13 +51,10 @@ export default function Home({ navigation, setIsLoggedIn }) {
 
     const loadUsers = async () => {
         try {
-            const currentUserId = await AsyncStorage.getItem("userId");
-            const { data } = await axios.get(`${API}/users`);
-            
-            const filteredData = data.users.filter(u => u._id !== currentUserId);
-            
-            setUsers(filteredData);
-            setFilteredUsers(filteredData);
+            const id = await AsyncStorage.getItem("userId");
+            const { data } = await axios.get(`${API_USERS}/users`);
+            const filtered = data.users.filter(u => u._id !== id);
+            setUsers(filtered);
         } catch (err) {
             console.log(err);
         } finally {
@@ -49,41 +62,164 @@ export default function Home({ navigation, setIsLoggedIn }) {
         }
     };
 
-    useEffect(() => { loadUsers(); }, []);
+    // Refresh conversations when screen is focused
+    useFocusEffect(
+        useCallback(() => {
+            setCurrentChat(null); // Not in any chat
+            loadUsers();
+            fetchConversations();
+        }, [])
+    );
+
+    // ─── Build merged chat list ───
+    // Combine users with conversation data (last message, unread count)
+    const getChatList = () => {
+        const convMap = {};
+        conversations.forEach(conv => {
+            const uid = conv._id || conv.userInfo?._id;
+            if (uid) convMap[uid] = conv;
+        });
+
+        // Users who have conversations, sorted by last message time
+        const usersWithConvs = [];
+        const usersWithoutConvs = [];
+
+        users.forEach(user => {
+            const conv = convMap[user._id];
+            if (conv && conv.lastMessage) {
+                usersWithConvs.push({ ...user, conversation: conv });
+            } else {
+                usersWithoutConvs.push({ ...user, conversation: null });
+            }
+        });
+
+        // Sort conversations by last message time (newest first)
+        usersWithConvs.sort((a, b) => {
+            const tA = new Date(a.conversation.lastMessage.createdAt).getTime();
+            const tB = new Date(b.conversation.lastMessage.createdAt).getTime();
+            return tB - tA;
+        });
+
+        return [...usersWithConvs, ...usersWithoutConvs];
+    };
+
+    const chatList = getChatList();
+
+    const filteredList = search
+        ? chatList.filter(u =>
+            u.username?.toLowerCase().includes(search.toLowerCase()) ||
+            u.name?.toLowerCase().includes(search.toLowerCase())
+        )
+        : chatList;
 
     const handleSearch = (text) => {
         setSearch(text);
-        if (!text) return setFilteredUsers(users);
-        setFilteredUsers(users.filter((u) => u.username?.toLowerCase().includes(text.toLowerCase())));
     };
 
-    const ChatItem = ({ item }) => (
-        <TouchableOpacity
-            style={[s.chatItem, { borderBottomColor: border }]}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate("chatUser", { user: item })}
-        >
-            <View>
-                <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
-                    {item?.profilePic ? (
-                        <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
-                    ) : (
-                        <Text style={s.avatarTxt}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
+    // ─── Format timestamp for chat list ───
+    const formatChatTime = (dateStr) => {
+        if (!dateStr) return "";
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diff = now - date;
+        const oneDay = 86400000;
+
+        if (diff < oneDay && date.getDate() === now.getDate()) {
+            return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        }
+
+        if (diff < 2 * oneDay) return "Yesterday";
+
+        if (diff < 7 * oneDay) {
+            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            return days[date.getDay()];
+        }
+
+        return date.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "2-digit" });
+    };
+
+    // ─── Message status icon for sent messages ───
+    const StatusIcon = ({ status }) => {
+        if (status === "read") {
+            return <Ionicons name="checkmark-done" size={16} color="#53bdeb" style={{ marginRight: 4 }} />;
+        }
+        if (status === "delivered") {
+            return <Ionicons name="checkmark-done" size={16} color={textSub} style={{ marginRight: 4 }} />;
+        }
+        return <Ionicons name="checkmark" size={16} color={textSub} style={{ marginRight: 4 }} />;
+    };
+
+    const ChatItem = ({ item }) => {
+        const conv = item.conversation;
+        const lastMsg = conv?.lastMessage;
+        const unreadCount = conv?.unreadCount || 0;
+        const hasUnread = unreadCount > 0;
+        const isSentByMe = lastMsg?.senderId === currentUserId;
+
+        const previewText = lastMsg
+            ? (lastMsg.isDeleted
+                ? "🚫 This message was deleted"
+                : lastMsg.message)
+            : "Tap to start chatting...";
+
+        return (
+            <TouchableOpacity
+                style={[s.chatItem, { borderBottomColor: border }]}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate("chatUser", { user: item })}
+            >
+                <View>
+                    <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                        {item?.profilePic ? (
+                            <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
+                        ) : (
+                            <Text style={s.avatarTxt}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
+                        )}
+                    </View>
+                    {onlineUsers.includes(item._id) && (
+                        <View style={[s.onlineDot, { borderColor: bg }]} />
                     )}
                 </View>
-                {onlineUsers.includes(item._id) && (
-                    <View style={[s.onlineDot, { borderColor: bg }]} />
-                )}
-            </View>
-            <View style={s.chatInfo}>
-                <View style={s.chatHeader}>
-                    <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>{item.name || item.username}</Text>
-                    <Text style={[s.chatTime, { color: textSub }]}>Today</Text>
+                <View style={s.chatInfo}>
+                    <View style={s.chatHeader}>
+                        <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
+                            {item.name || item.username}
+                        </Text>
+                        <Text style={[
+                            s.chatTime,
+                            { color: hasUnread ? accentGreen : textSub }
+                        ]}>
+                            {lastMsg ? formatChatTime(lastMsg.createdAt) : ""}
+                        </Text>
+                    </View>
+                    <View style={s.previewRow}>
+                        <View style={s.previewTextWrap}>
+                            {isSentByMe && lastMsg && !lastMsg.isDeleted && (
+                                <StatusIcon status={lastMsg.status} />
+                            )}
+                            <Text
+                                style={[
+                                    s.chatPreview,
+                                    { color: hasUnread ? textMain : textSub },
+                                    hasUnread && { fontWeight: "600" }
+                                ]}
+                                numberOfLines={1}
+                            >
+                                {previewText}
+                            </Text>
+                        </View>
+                        {hasUnread && (
+                            <View style={s.unreadBadge}>
+                                <Text style={s.unreadTxt}>
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
                 </View>
-                <Text style={[s.chatPreview, { color: textSub }]} numberOfLines={1}>Tap to view messages...</Text>
-            </View>
-        </TouchableOpacity>
-    );
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
@@ -121,13 +257,13 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 </View>
             ) : (
                 <FlatList
-                    data={filteredUsers}
+                    data={filteredList}
                     keyExtractor={(item) => item._id}
                     renderItem={({ item }) => <ChatItem item={item} />}
                     contentContainerStyle={s.listContent}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={
-                        filteredUsers.length === 0 && (
+                        filteredList.length === 0 && (
                             <View style={s.emptyWrap}>
                                 <Ionicons name="search-outline" size={48} color={border} />
                                 <Text style={[s.emptyTxt, { color: textSub }]}>No chats found</Text>
@@ -191,9 +327,19 @@ const s = StyleSheet.create({
     },
     chatInfo: { flex: 1 },
     chatHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-    chatName: { fontSize: 16, fontWeight: "600" },
+    chatName: { fontSize: 16, fontWeight: "600", flex: 1, marginRight: 8 },
     chatTime: { fontSize: 12 },
-    chatPreview: { fontSize: 14 },
+    previewRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    previewTextWrap: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
+    chatPreview: { fontSize: 14, flex: 1 },
+
+    // Unread Badge
+    unreadBadge: {
+        backgroundColor: "#25D366", borderRadius: 12,
+        minWidth: 24, height: 24, paddingHorizontal: 6,
+        justifyContent: "center", alignItems: "center",
+    },
+    unreadTxt: { color: "#fff", fontSize: 12, fontWeight: "700" },
 
     // Loading / Empty
     loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
