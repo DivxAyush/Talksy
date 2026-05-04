@@ -9,6 +9,7 @@ import Register from "./src/Components/Register";
 import Home from "./src/Components/Home";
 import ChatUser from "./src/screens/chatUser";
 import Settings from "./src/screens/Settings";
+import Profile from "./src/screens/Profile";
 import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { SocketProvider } from "./src/context/SocketContext";
@@ -54,6 +55,7 @@ const MainApp = () => {
        </Stack.Screen>
        <Stack.Screen name="chatUser" component={ChatUser} />
        <Stack.Screen name="Settings" component={Settings} options={{ animation: "slide_from_right" }} />
+       <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
       </>
      ) : (
       <>

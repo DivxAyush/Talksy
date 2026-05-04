@@ -5,16 +5,27 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ThemeContext } from "../context/ThemeContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function Settings({ navigation }) {
  const { isDark, toggleTheme } = useContext(ThemeContext);
+ const [user, setUser] = useState(null);
  
  const [modalVisible, setModalVisible] = useState(false);
  const sheetAnim = useRef(new Animated.Value(0)).current;
  const curtainAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
  const [curtainColor, setCurtainColor] = useState("#1a1a2e");
+
+ useEffect(() => {
+  const loadUser = async () => {
+   const userStr = await AsyncStorage.getItem("user");
+   if (userStr) setUser(JSON.parse(userStr));
+  };
+  const unsubscribe = navigation.addListener('focus', loadUser);
+  return unsubscribe;
+ }, [navigation]);
 
  // Dynamic Colors
  const bg = isDark ? "#111b21" : "#fafafa";
@@ -90,14 +101,22 @@ export default function Settings({ navigation }) {
 
    <ScrollView showsVerticalScrollIndicator={false}>
     {/* Profile Section */}
-    <TouchableOpacity style={[s.profileSection, { borderBottomColor: isDark ? "#202c33" : "#f0f0f0" }]}>
-     <View style={s.avatar}>
-      <Text style={s.avatarTxt}>N</Text>
+    <TouchableOpacity 
+     style={[s.profileSection, { borderBottomColor: isDark ? "#202c33" : "#f0f0f0" }]}
+     onPress={() => navigation.navigate("Profile")}
+     activeOpacity={0.7}
+    >
+     <View style={[s.avatar, { backgroundColor: isDark ? "#00a884" : "#1a1a2e" }]}>
+      {user?.profilePic ? (
+       <Image source={{ uri: user.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 30 }} />
+      ) : (
+       <Text style={s.avatarTxt}>{user?.username?.charAt(0)?.toUpperCase() || "T"}</Text>
+      )}
      </View>
      <View style={s.profileInfo}>
-      <Text style={[s.profileName, { color: textMain }]}>NotYourAyush🦋</Text>
+      <Text style={[s.profileName, { color: textMain }]}>{user?.name || user?.username || "Talksy User"}</Text>
       <Text style={[s.profileStatus, { color: textSub }]} numberOfLines={1}>
-       Strong Man Builds Future week Man ...
+       {user?.about || "Hey there! I am using Talksy."}
       </Text>
      </View>
     </TouchableOpacity>

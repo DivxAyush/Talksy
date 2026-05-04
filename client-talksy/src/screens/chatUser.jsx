@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useContext } from "rea
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     Platform, ActivityIndicator, Keyboard, Animated, Pressable, Alert,
-    KeyboardAvoidingView, Modal, Vibration
+    KeyboardAvoidingView, Modal, Vibration, Image
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -105,7 +105,7 @@ export default function ChatUser({ route, navigation }) {
 
     const fetchMessages = async () => {
         try {
-            const { data } = await axios.get(`${API}/${senderId}/${receiverId}`);
+            const { data } = await axios.get(`${API}/messages/${senderId}/${receiverId}`);
             setMessages(data.messages);
         } catch (err) {
             console.log(err);
@@ -252,10 +252,14 @@ export default function ChatUser({ route, navigation }) {
                 {/* Header */}
                 <View style={[s.header, { backgroundColor: headerBg, borderBottomColor: border }]}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-                        <Ionicons name="chevron-back" size={24} color={textMain} />
+                        <Ionicons name="arrow-back" size={24} color={textMain} />
                     </TouchableOpacity>
                     <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
-                        <Text style={s.avatarTxt}>{userName?.charAt(0)?.toUpperCase()}</Text>
+                        {user?.profilePic ? (
+                            <Image source={{ uri: user.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 20 }} />
+                        ) : (
+                            <Text style={s.avatarTxt}>{userName?.charAt(0)?.toUpperCase()}</Text>
+                        )}
                     </View>
                     <View style={s.headerInfo}>
                         <Text style={[s.headerName, { color: textMain }]} numberOfLines={1}>{userName}</Text>

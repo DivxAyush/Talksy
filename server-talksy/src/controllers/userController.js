@@ -32,7 +32,9 @@ export const registerUser = async (request, reply) => {
    user: {
     _id: user._id,
     username: user.username,
-    mobile: user.mobile
+    mobile: user.mobile,
+    name: user.name,
+    about: user.about
    }
   };
 
@@ -48,7 +50,7 @@ export const registerUser = async (request, reply) => {
 
 export const getUsers = async (request, reply) => {
  try {
-  const users = await MastUser.find().select("username password email");
+  const users = await MastUser.find().select("username mobile name about profilePic");
 
   return {
    success: true,
@@ -91,10 +93,56 @@ export const loginUser = async (request, reply) => {
    user: {
     _id: user._id,
     username: user.username,
-    mobile: user.mobile
+    mobile: user.mobile,
+    name: user.name,
+    about: user.about,
+    profilePic: user.profilePic
    }
   };
 
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};
+
+export const updateProfile = async (request, reply) => {
+ try {
+  const { userId } = request.params;
+  const { name, about, profilePic } = request.body;
+
+  const updateData = { name, about };
+  if (profilePic !== undefined) {
+   updateData.profilePic = profilePic;
+  }
+
+  const user = await MastUser.findByIdAndUpdate(
+   userId,
+   updateData,
+   { new: true }
+  );
+
+  if (!user) {
+   return reply.code(404).send({
+    success: false,
+    message: "User not found"
+   });
+  }
+
+  return {
+   success: true,
+   message: "Profile updated successfully",
+   user: {
+    _id: user._id,
+    username: user.username,
+    mobile: user.mobile,
+    name: user.name,
+    about: user.about,
+    profilePic: user.profilePic
+   }
+  };
  } catch (error) {
   reply.code(500).send({
    success: false,
