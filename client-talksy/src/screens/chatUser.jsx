@@ -36,6 +36,7 @@ export default function ChatUser({ route, navigation }) {
  const videoRef = useRef(null);
  const [messages, setMessages] = useState([]);
  const [text, setText] = useState("");
+ const textRef = useRef("");
  const [senderId, setSenderId] = useState("");
  const senderIdRef = useRef("");
  const [loading, setLoading] = useState(true);
@@ -390,35 +391,36 @@ export default function ChatUser({ route, navigation }) {
   return () => { if (currentlyPlaying) currentlyPlaying.sound.unloadAsync(); };
  }, [currentlyPlaying]);
 
+ const callbacksRef = useRef({});
  const panResponder = useRef(
   PanResponder.create({
    onStartShouldSetPanResponder: () => true,
    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
    onPanResponderGrant: () => {
-    if (!text.trim()) {
-     startRecording();
+    if (!textRef.current.trim()) {
+     callbacksRef.current.startRecording();
     }
    },
    onPanResponderMove: (_, gesture) => {
     if (isRecordingRef.current && gesture.dx < 0) {
      recordSlideAnim.setValue(gesture.dx);
      if (gesture.dx < -120) {
-      stopRecording(false);
+      callbacksRef.current.stopRecording(false);
       Vibration.vibrate(30);
       recordSlideAnim.setValue(0);
      }
     }
    },
    onPanResponderRelease: () => {
-    if (text.trim()) {
-     sendMessage();
+    if (textRef.current.trim()) {
+     callbacksRef.current.sendMessage();
     } else if (isRecordingRef.current || recordingRef.current) {
-     stopRecording(true);
+     callbacksRef.current.stopRecording(true);
     }
     Animated.spring(recordSlideAnim, { toValue: 0, useNativeDriver: true }).start();
    },
    onPanResponderTerminate: () => {
-    if (isRecordingRef.current || recordingRef.current) stopRecording(false);
+    if (isRecordingRef.current || recordingRef.current) callbacksRef.current.stopRecording(false);
     recordSlideAnim.setValue(0);
    }
   })
@@ -454,6 +456,7 @@ export default function ChatUser({ route, navigation }) {
  // ─── Typing emit with debounce ───
  const handleTextChange = (val) => {
   setText(val);
+  textRef.current = val;
   if (!socket) return;
   if (!isTypingRef.current && val.trim()) {
    isTypingRef.current = true;
@@ -470,9 +473,11 @@ export default function ChatUser({ route, navigation }) {
 
  // ─── Send message ───
  const sendMessage = async () => {
-  if (!senderId || !text.trim()) return;
-  const msg = text.trim();
+  const currentText = textRef.current || text;
+  if (!senderId || !currentText.trim()) return;
+  const msg = currentText.trim();
   setText("");
+  textRef.current = "";
   // Stop typing
   if (isTypingRef.current && socket) {
    isTypingRef.current = false;
@@ -490,7 +495,7 @@ export default function ChatUser({ route, navigation }) {
     addMessageToCache(senderId, receiverId, data.data);
     setReplyMsg(null);
    }
-  } catch (err) { setText(msg); }
+  } catch (err) { setText(msg); textRef.current = msg; }
   finally { setSending(false); }
  };
 
@@ -715,6 +720,8 @@ export default function ChatUser({ route, navigation }) {
    </View>
   </View>
  );
+
+ callbacksRef.current = { startRecording, stopRecording, sendMessage };
 
  return (
   <View style={[s.container, { backgroundColor: bg }]}>
