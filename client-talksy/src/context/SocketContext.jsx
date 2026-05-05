@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useRef, useCallb
 import { AppState } from "react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
 import { ChatContext } from "./ChatContext";
 import { showLocalNotification } from "../utils/notificationService";
 export const SocketContext = createContext();
@@ -14,6 +15,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const {
         updateConversationWithMessage,
         updateConversationMessageStatus,
+        updateUserProfileInConversations,
         fetchConversations,
         getCurrentChat
     } = useContext(ChatContext);
@@ -23,6 +25,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const statusHandlerRef = useRef(null);
     const deleteHandlerRef = useRef(null);
     const readHandlerRef = useRef(null);
+    const profileUpdateHandlerRef = useRef(null); // for chat screen header updates
 
     // Register/unregister handlers from chat screen
     const registerMessageHandler = useCallback((handler) => {
@@ -57,6 +60,14 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         readHandlerRef.current = null;
     }, []);
 
+    const registerProfileUpdateHandler = useCallback((handler) => {
+        profileUpdateHandlerRef.current = handler;
+    }, []);
+
+    const unregisterProfileUpdateHandler = useCallback(() => {
+        profileUpdateHandlerRef.current = null;
+    }, []);
+
     useEffect(() => {
         let newSocket;
 
@@ -74,6 +85,15 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                     });
 
                     setSocket(newSocket);
+
+                    // ─── Mark pending messages as delivered (fixes single-tick bug) ───
+                    try {
+                        await axios.post("https://talksy-3py1.onrender.com/api/messages/mark-delivered", {
+                            userId: user._id
+                        });
+                    } catch (err) {
+                        console.log("Mark delivered error:", err.message);
+                    }
 
                     // ─── Online Users ───
                     newSocket.on("getOnlineUsers", (users) => {
@@ -135,6 +155,21 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                         }
                     });
 
+                    // ─── Profile Updated (real-time) ───
+                    newSocket.on("profile_updated", (data) => {
+                        // Update conversations list
+                        updateUserProfileInConversations(data.userId, {
+                            name: data.name,
+                            username: data.username,
+                            profilePic: data.profilePic,
+                            about: data.about,
+                        });
+                        // Forward to chat screen if open
+                        if (profileUpdateHandlerRef.current) {
+                            profileUpdateHandlerRef.current(data);
+                        }
+                    });
+
                     // ─── Typing Indicators ───
                     newSocket.on("typing_start", ({ senderId }) => {
                         setTypingUsers(prev => ({ ...prev, [senderId]: true }));
@@ -150,7 +185,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
 
                     // Refresh conversations on reconnect
                     newSocket.on("reconnect", () => {
-                        fetchConversations();
+                        fetchConversations(true); // force refresh on reconnect
                     });
                 }
             } else {
@@ -182,7 +217,9 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
             registerDeleteHandler,
             unregisterDeleteHandler,
             registerReadHandler,
-            unregisterReadHandler
+            unregisterReadHandler,
+            registerProfileUpdateHandler,
+            unregisterProfileUpdateHandler
         }}>
             {children}
         </SocketContext.Provider>

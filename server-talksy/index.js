@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import dotenv from "dotenv";
 import connectDB from "./src/config/db.js";
 import { initSocket } from "./src/socket/socket.js";
@@ -18,6 +19,13 @@ connectDB();
 fastify.register(cors, {
   origin: true, // sab origins allow karo (dev ke liye)
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+});
+
+// ✅ Multipart support for file uploads (50MB limit)
+fastify.register(multipart, {
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50 MB
+  },
 });
 
 fastify.register(userRoutes, { prefix: "/api/users" });

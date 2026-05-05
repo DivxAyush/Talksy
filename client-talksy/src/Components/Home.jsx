@@ -1,23 +1,23 @@
-import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
+import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from "react";
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    Platform, ActivityIndicator, Image, Animated,
+    Platform, ActivityIndicator, Image, Modal, Animated, Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeContext } from "../context/ThemeContext";
 import { SocketContext } from "../context/SocketContext";
 import { ChatContext } from "../context/ChatContext";
 import { useFocusEffect } from "@react-navigation/native";
 
-const API_USERS = "https://talksy-3py1.onrender.com/api/users";
-
 export default function Home({ navigation, setIsLoggedIn }) {
-    const [users, setUsers] = useState([]);
     const [search, setSearch] = useState("");
-    const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState("");
+
+    // Profile popup state
+    const [popupUser, setPopupUser] = useState(null);
+    const [popupVisible, setPopupVisible] = useState(false);
+    const popupAnim = useRef(new Animated.Value(0)).current;
 
     const { isDark } = useContext(ThemeContext);
     const { onlineUsers } = useContext(SocketContext);
@@ -28,20 +28,14 @@ export default function Home({ navigation, setIsLoggedIn }) {
         setCurrentChat
     } = useContext(ChatContext);
 
-    // ─── Fab Animation ───
-    const fabScale = useRef(new Animated.Value(0)).current;
-    const fabRotate = useRef(new Animated.Value(0)).current;
-
     // Dynamic Theme Colors
     const bg = isDark ? "#111b21" : "#fff";
     const surface = isDark ? "#202c33" : "#f5f5f5";
     const textMain = isDark ? "#e9edef" : "#1a1a2e";
     const textSub = isDark ? "#8696a0" : "#666";
     const border = isDark ? "#202c33" : "#f0f0f0";
-    const iconBtnBg = isDark ? "#2a3942" : "#f5f5f5";
-    const accentGreen = "#25D366";
-    const accentTeal = isDark ? "#00a884" : "#008069";
     const accentPurple = "#5B5FC7";
+    const accentGreen = "#25D366";
 
     useEffect(() => {
         (async () => {
@@ -50,92 +44,27 @@ export default function Home({ navigation, setIsLoggedIn }) {
         })();
     }, []);
 
-    const handleLogout = async () => {
-        await AsyncStorage.clear();
-        setIsLoggedIn(false);
-    };
-
-    const loadUsers = async () => {
-        try {
-            const id = await AsyncStorage.getItem("userId");
-            const { data } = await axios.get(`${API_USERS}/users`);
-            const filtered = data.users.filter(u => u._id !== id);
-            setUsers(filtered);
-        } catch (err) {
-            console.log(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Refresh conversations when screen is focused
+    // Smart fetch — only re-fetches if stale (>30s) thanks to ChatContext caching
     useFocusEffect(
         useCallback(() => {
             setCurrentChat(null); // Not in any chat
-            loadUsers();
-            fetchConversations();
-
-            // Animate FAB in
-            Animated.sequence([
-                Animated.delay(300),
-                Animated.parallel([
-                    Animated.spring(fabScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
-                    Animated.timing(fabRotate, { toValue: 1, duration: 400, useNativeDriver: true }),
-                ]),
-            ]).start();
-
-            return () => {
-                fabScale.setValue(0);
-                fabRotate.setValue(0);
-            };
+            fetchConversations(); // Will skip if cache is fresh
         }, [])
     );
 
-    // ─── Build chat list: only users with conversations ───
-    const getChatList = () => {
-        const convMap = {};
-        conversations.forEach(conv => {
-            const uid = conv._id || conv.userInfo?._id;
-            if (uid) convMap[uid] = conv;
-        });
-
-        const usersWithConvs = [];
-
-        users.forEach(user => {
-            const conv = convMap[user._id];
-            if (conv && conv.lastMessage) {
-                usersWithConvs.push({ ...user, conversation: conv });
-            }
-        });
-
-        // Also include conversations that might not be in users list (from server)
-        conversations.forEach(conv => {
-            const uid = conv._id || conv.userInfo?._id;
-            if (uid && conv.lastMessage && !usersWithConvs.find(u => u._id === uid)) {
-                const userInfo = conv.userInfo || {};
-                usersWithConvs.push({
-                    _id: uid,
-                    username: userInfo.username,
-                    name: userInfo.name,
-                    profilePic: userInfo.profilePic,
-                    about: userInfo.about,
-                    conversation: conv,
-                });
-            }
-        });
-
-        // Sort by last message time (newest first)
-        usersWithConvs.sort((a, b) => {
-            const tA = new Date(a.conversation.lastMessage.createdAt).getTime();
-            const tB = new Date(b.conversation.lastMessage.createdAt).getTime();
-            return tB - tA;
-        });
-
-        return usersWithConvs;
-    };
-
-    const chatList = getChatList();
-
+    // ─── Build chat list directly from conversations (no separate users API call) ───
+    const chatList = useMemo(() => {
+        return conversations
+            .filter(conv => conv.lastMessage)
+            .map(conv => ({
+                _id: conv._id || conv.userInfo?._id,
+                username: conv.userInfo?.username,
+                name: conv.userInfo?.name,
+                profilePic: conv.userInfo?.profilePic,
+                about: conv.userInfo?.about,
+                conversation: conv,
+            }));
+    }, [conversations]);
     const filteredList = search
         ? chatList.filter(u =>
             u.username?.toLowerCase().includes(search.toLowerCase()) ||
@@ -145,6 +74,19 @@ export default function Home({ navigation, setIsLoggedIn }) {
 
     const handleSearch = (text) => {
         setSearch(text);
+    };
+
+    // ─── Profile Popup ───
+    const showProfilePopup = (user) => {
+        setPopupUser(user);
+        setPopupVisible(true);
+        Animated.timing(popupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    };
+    const hideProfilePopup = () => {
+        Animated.timing(popupAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+            setPopupVisible(false);
+            setPopupUser(null);
+        });
     };
 
     // ─── Format timestamp for chat list ───
@@ -187,11 +129,20 @@ export default function Home({ navigation, setIsLoggedIn }) {
         const hasUnread = unreadCount > 0;
         const isSentByMe = lastMsg?.senderId === currentUserId;
 
-        const previewText = lastMsg
-            ? (lastMsg.isDeleted
-                ? "🚫 This message was deleted"
-                : lastMsg.message)
-            : "Tap to start chatting...";
+        let previewText = "Tap to start chatting...";
+        if (lastMsg) {
+            if (lastMsg.isDeleted) {
+                previewText = "🚫 This message was deleted";
+            } else if (lastMsg.messageType === "image") {
+                previewText = "📷 Photo";
+            } else if (lastMsg.messageType === "video") {
+                previewText = "🎥 Video";
+            } else if (lastMsg.messageType === "voice") {
+                previewText = "🎤 Voice message";
+            } else {
+                previewText = lastMsg.message;
+            }
+        }
 
         return (
             <TouchableOpacity
@@ -199,7 +150,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 activeOpacity={0.7}
                 onPress={() => navigation.navigate("chatUser", { user: item })}
             >
-                <View>
+                <TouchableOpacity onPress={() => showProfilePopup(item)} activeOpacity={0.8}>
                     <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
                         {item?.profilePic ? (
                             <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
@@ -210,7 +161,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     {onlineUsers.includes(item._id) && (
                         <View style={[s.onlineDot, { borderColor: bg }]} />
                     )}
-                </View>
+                </TouchableOpacity>
                 <View style={s.chatInfo}>
                     <View style={s.chatHeader}>
                         <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
@@ -273,11 +224,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
         </View>
     );
 
-    // FAB rotation interpolation
-    const fabRotateInterpolate = fabRotate.interpolate({
-        inputRange: [0, 1],
-        outputRange: ["0deg", "135deg"],
-    });
 
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
@@ -285,9 +231,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
             <View style={[s.header, { backgroundColor: bg }]}>
                 <View style={s.headerTop}>
                     <Text style={[s.logo, { color: textMain }]}>Talksy</Text>
-                    <TouchableOpacity style={[s.iconBtn, { backgroundColor: iconBtnBg }]} onPress={handleLogout}>
-                        <Ionicons name="ellipsis-vertical" size={20} color={textMain} />
-                    </TouchableOpacity>
                 </View>
 
                 {/* Search */}
@@ -308,8 +251,8 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 </View>
             </View>
 
-            {/* Chat List - Only Active Conversations */}
-            {loading ? (
+            {/* Chat List */}
+            {loadingConversations && conversations.length === 0 ? (
                 <View style={s.loaderWrap}>
                     <ActivityIndicator size="large" color={textMain} />
                 </View>
@@ -324,42 +267,38 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 />
             )}
 
-            {/* Bottom Navigation */}
-            <View style={[s.bottomNav, { backgroundColor: bg, borderTopColor: border }]}>
-                <TouchableOpacity style={s.navItem}>
-                    <Ionicons name="home" size={22} color={textMain} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate("Settings")}>
-                    <Ionicons name="person-outline" size={22} color={textSub} />
-                </TouchableOpacity>
-            </View>
-
-            {/* ─── Floating Purple FAB ─── */}
-            <Animated.View style={[s.fabWrap, {
-                transform: [
-                    { scale: fabScale },
-                ],
-            }]}>
-                <TouchableOpacity
-                    style={[s.fab, { backgroundColor: accentPurple }]}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                        // Rotate animation on press
-                        Animated.spring(fabRotate, {
-                            toValue: fabRotate.__getValue() === 0 ? 1 : 0,
-                            tension: 60,
-                            friction: 6,
-                            useNativeDriver: true,
-                        }).start();
-                        navigation.navigate("NewChat");
-                    }}
-                >
-                    <Animated.View style={{ transform: [{ rotate: fabRotateInterpolate }] }}>
-                        <Ionicons name="add" size={30} color="#fff" />
+            {/* ─── Profile Popup Modal ─── */}
+            <Modal visible={popupVisible} transparent animationType="none" onRequestClose={hideProfilePopup}>
+                <Pressable style={s.popupOverlay} onPress={hideProfilePopup}>
+                    <Animated.View style={[s.popupBackdrop, { opacity: popupAnim }]} />
+                    <Animated.View style={[s.popupCard, {
+                        backgroundColor: isDark ? "#202c33" : "#fff",
+                        opacity: popupAnim,
+                        transform: [{ scale: popupAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+                    }]}>
+                        {popupUser?.profilePic ? (
+                            <Image
+                                source={{ uri: popupUser.profilePic }}
+                                style={s.popupImage}
+                            />
+                        ) : (
+                            <View style={[s.popupAvatarPlaceholder, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                                <Text style={s.popupAvatarTxt}>
+                                    {popupUser?.username?.charAt(0)?.toUpperCase()}
+                                </Text>
+                            </View>
+                        )}
+                        <Text style={[s.popupName, { color: textMain }]}>
+                            {popupUser?.name || popupUser?.username}
+                        </Text>
+                        {popupUser?.about ? (
+                            <Text style={[s.popupAbout, { color: textSub }]}>
+                                {popupUser.about}
+                            </Text>
+                        ) : null}
                     </Animated.View>
-                </TouchableOpacity>
-            </Animated.View>
+                </Pressable>
+            </Modal>
         </View>
     );
 }
@@ -430,28 +369,22 @@ const s = StyleSheet.create({
     },
     startChatBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
-    // Bottom Nav
-    bottomNav: {
-        flexDirection: "row", justifyContent: "space-around", alignItems: "center",
-        paddingVertical: 12, borderTopWidth: 1,
-        position: "absolute", bottom: 0, width: "100%", paddingBottom: Platform.OS === "ios" ? 24 : 12,
+    // Profile Popup
+    popupOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
+    popupBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.6)" },
+    popupCard: {
+        width: 280, borderRadius: 20, alignItems: "center",
+        paddingBottom: 24, overflow: "hidden",
+        shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2, shadowRadius: 20, elevation: 12,
     },
-    navItem: { padding: 8 },
+    popupImage: { width: 280, height: 280, resizeMode: "cover" },
+    popupAvatarPlaceholder: {
+        width: 280, height: 280, justifyContent: "center", alignItems: "center",
+    },
+    popupAvatarTxt: { color: "#fff", fontSize: 80, fontWeight: "700" },
+    popupName: { fontSize: 20, fontWeight: "700", marginTop: 16, textAlign: "center" },
+    popupAbout: { fontSize: 14, marginTop: 4, textAlign: "center", paddingHorizontal: 16 },
 
-    // Floating Action Button
-    fabWrap: {
-        position: "absolute",
-        bottom: Platform.OS === "ios" ? 90 : 76,
-        right: 20,
-        zIndex: 10,
-    },
-    fab: {
-        width: 60, height: 60, borderRadius: 30,
-        justifyContent: "center", alignItems: "center",
-        shadowColor: "#5B5FC7",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
-        elevation: 8,
-    },
 });
+

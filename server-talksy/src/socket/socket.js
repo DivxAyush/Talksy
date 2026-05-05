@@ -126,6 +126,18 @@ export const initSocket = (server) => {
    }
   });
 
+  // ─── Profile Updated (broadcast to all users) ───
+  socket.on("profile_updated", (profileData) => {
+   // Broadcast to all OTHER connected sockets
+   socket.broadcast.emit("profile_updated", {
+    userId: profileData.userId || userId,
+    name: profileData.name,
+    username: profileData.username,
+    profilePic: profileData.profilePic,
+    about: profileData.about,
+   });
+  });
+
   // ─── Disconnect ───
   socket.on("disconnect", () => {
    console.log("User disconnected:", socket.id);

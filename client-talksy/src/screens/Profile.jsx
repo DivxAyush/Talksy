@@ -9,11 +9,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import * as ImagePicker from "expo-image-picker";
 import { ThemeContext } from "../context/ThemeContext";
+import { SocketContext } from "../context/SocketContext";
 
 const API = "https://talksy-3py1.onrender.com/api/users";
 
 export default function Profile({ navigation }) {
     const { isDark } = useContext(ThemeContext);
+    const { socket } = useContext(SocketContext);
 
     const [user, setUser] = useState(null);
     const [name, setName] = useState("");
@@ -115,6 +117,18 @@ export default function Profile({ navigation }) {
                 await AsyncStorage.setItem("user", JSON.stringify(data.user));
                 setUser(data.user);
                 showToast("Profile updated successfully");
+
+                // Emit profile update via socket for real-time sync
+                if (socket) {
+                    socket.emit("profile_updated", {
+                        userId: user._id,
+                        name: data.user.name,
+                        username: data.user.username,
+                        profilePic: data.user.profilePic,
+                        about: data.user.about,
+                    });
+                }
+
                 setTimeout(() => navigation.goBack(), 1000);
             }
         } catch (error) {

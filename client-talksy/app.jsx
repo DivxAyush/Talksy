@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext, useRef } from "react";
 import { StatusBar, AppState } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 
@@ -15,6 +16,7 @@ import NewChat from "./src/screens/NewChat";
 import ForgotPassword from "./src/screens/ForgotPassword";
 import VerifyOTP from "./src/screens/VerifyOTP";
 import ChangePassword from "./src/screens/ChangePassword";
+import CustomTabBar from "./src/Components/CustomTabBar";
 import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { ChatProvider } from "./src/context/ChatContext";
@@ -22,6 +24,24 @@ import { SocketProvider } from "./src/context/SocketContext";
 import { initializePushNotifications } from "./src/utils/notificationService";
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+// ─── Tab Navigator (Home + Settings with fixed footer) ───
+const MainTabs = ({ setIsLoggedIn }) => {
+ return (
+  <Tab.Navigator
+   screenOptions={{ headerShown: false }}
+   tabBar={(props) => <CustomTabBar {...props} />}
+  >
+   <Tab.Screen name="HomeTab">
+    {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
+   </Tab.Screen>
+   <Tab.Screen name="SettingsTab">
+    {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
+   </Tab.Screen>
+  </Tab.Navigator>
+ );
+};
 
 const MainApp = () => {
  const [loading, setLoading] = useState(true);
@@ -55,8 +75,6 @@ const MainApp = () => {
    Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response.notification.request.content.data;
     if (data?.type === "new_message" && data?.senderId) {
-     // Navigate to the chat with the sender
-     // We'll navigate once navigation is ready
      setTimeout(() => {
       if (navigationRef.current) {
        navigationRef.current.navigate("chatUser", {
@@ -92,14 +110,11 @@ const MainApp = () => {
      <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isLoggedIn ? (
        <>
-        <Stack.Screen name="Home">
-         {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
+        <Stack.Screen name="MainTabs">
+         {(props) => <MainTabs {...props} setIsLoggedIn={setIsLoggedIn} />}
         </Stack.Screen>
         <Stack.Screen name="chatUser" component={ChatUser} />
         <Stack.Screen name="NewChat" component={NewChat} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="Settings" options={{ animation: "slide_from_right" }}>
-         {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
-        </Stack.Screen>
         <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />

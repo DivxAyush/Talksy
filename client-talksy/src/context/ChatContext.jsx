@@ -3,6 +3,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
+const CACHE_TTL = 30000; // 30 seconds before re-fetch allowed
 
 export const ChatContext = createContext();
 
@@ -10,6 +11,12 @@ export const ChatProvider = ({ children }) => {
     const [conversations, setConversations] = useState([]);
     const [loadingConversations, setLoadingConversations] = useState(false);
     const currentChatRef = useRef(null); // track which chat is currently open
+    const lastFetchTimeRef = useRef(0); // timestamp of last conversations fetch
+    const hasFetchedOnceRef = useRef(false); // whether we've fetched at least once
+
+    // ─── Per-conversation message cache ───
+    // Structure: { [conversationKey]: { messages: [], page: 1, hasMore: false, lastFetchTime: 0 } }
+    const messagesCacheRef = useRef({});
 
     // Set which chat is currently being viewed
     const setCurrentChat = useCallback((userId) => {
@@ -20,8 +27,16 @@ export const ChatProvider = ({ children }) => {
         return currentChatRef.current;
     }, []);
 
-    // Fetch conversations list from server
-    const fetchConversations = useCallback(async () => {
+    // ─── Fetch conversations list (with smart caching) ───
+    const fetchConversations = useCallback(async (force = false) => {
+        const now = Date.now();
+        const timeSinceLast = now - lastFetchTimeRef.current;
+
+        // Skip fetch if we have data and it's recent (unless forced)
+        if (!force && hasFetchedOnceRef.current && timeSinceLast < CACHE_TTL) {
+            return;
+        }
+
         try {
             setLoadingConversations(true);
             const userId = await AsyncStorage.getItem("userId");
@@ -30,11 +45,57 @@ export const ChatProvider = ({ children }) => {
             const { data } = await axios.get(`${API}/conversations/${userId}`);
             if (data.success) {
                 setConversations(data.conversations);
+                lastFetchTimeRef.current = Date.now();
+                hasFetchedOnceRef.current = true;
             }
         } catch (err) {
             console.log("Error fetching conversations:", err.message);
         } finally {
             setLoadingConversations(false);
+        }
+    }, []);
+
+    // ─── Message Cache helpers ───
+    const getCacheKey = (userId1, userId2) => {
+        return [userId1, userId2].sort().join("_");
+    };
+
+    const getCachedMessages = useCallback((senderId, receiverId) => {
+        const key = getCacheKey(senderId, receiverId);
+        return messagesCacheRef.current[key] || null;
+    }, []);
+
+    const setCachedMessages = useCallback((senderId, receiverId, data) => {
+        const key = getCacheKey(senderId, receiverId);
+        messagesCacheRef.current[key] = {
+            ...data,
+            lastFetchTime: Date.now(),
+        };
+    }, []);
+
+    const updateCachedMessage = useCallback((senderId, receiverId, updater) => {
+        const key = getCacheKey(senderId, receiverId);
+        const cached = messagesCacheRef.current[key];
+        if (cached) {
+            messagesCacheRef.current[key] = {
+                ...cached,
+                messages: updater(cached.messages),
+            };
+        }
+    }, []);
+
+    const addMessageToCache = useCallback((senderId, receiverId, message) => {
+        const key = getCacheKey(senderId, receiverId);
+        const cached = messagesCacheRef.current[key];
+        if (cached) {
+            // Add to front (newest first for inverted list)
+            const exists = cached.messages.some(m => m._id === message._id);
+            if (!exists) {
+                messagesCacheRef.current[key] = {
+                    ...cached,
+                    messages: [message, ...cached.messages],
+                };
+            }
         }
     }, []);
 
@@ -65,8 +126,7 @@ export const ChatProvider = ({ children }) => {
                 };
 
                 // If the message is from someone else & we're NOT in that chat, increment unread
-                const myUserId = currentChatRef.current;
-                if (message.senderId !== myUserId && currentChatRef.current !== message.senderId) {
+                if (message.senderId !== currentChatRef.current && currentChatRef.current !== message.senderId) {
                     conv.unreadCount = (conv.unreadCount || 0) + 1;
                 }
 
@@ -75,7 +135,8 @@ export const ChatProvider = ({ children }) => {
                 return updated;
             }
 
-            // New conversation — will be populated on next fetchConversations
+            // New conversation — fetch fresh data to get userInfo
+            fetchConversations(true);
             return prev;
         });
     }, []);
@@ -107,6 +168,21 @@ export const ChatProvider = ({ children }) => {
         );
     }, []);
 
+    // ─── Update user profile info in conversations (real-time) ───
+    const updateUserProfileInConversations = useCallback((userId, profileData) => {
+        setConversations(prev =>
+            prev.map(conv => {
+                if (conv._id === userId || conv.userInfo?._id === userId) {
+                    return {
+                        ...conv,
+                        userInfo: { ...conv.userInfo, ...profileData }
+                    };
+                }
+                return conv;
+            })
+        );
+    }, []);
+
     return (
         <ChatContext.Provider value={{
             conversations,
@@ -115,8 +191,14 @@ export const ChatProvider = ({ children }) => {
             updateConversationWithMessage,
             clearUnreadCount,
             updateConversationMessageStatus,
+            updateUserProfileInConversations,
             setCurrentChat,
-            getCurrentChat
+            getCurrentChat,
+            // Message cache
+            getCachedMessages,
+            setCachedMessages,
+            updateCachedMessage,
+            addMessageToCache,
         }}>
             {children}
         </ChatContext.Provider>
