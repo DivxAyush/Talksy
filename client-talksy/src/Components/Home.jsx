@@ -41,6 +41,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
     const iconBtnBg = isDark ? "#2a3942" : "#f5f5f5";
     const accentGreen = "#25D366";
     const accentTeal = isDark ? "#00a884" : "#008069";
+    const accentPurple = "#5B5FC7";
 
     useEffect(() => {
         (async () => {
@@ -262,7 +263,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 Tap the button below to start a{"\n"}conversation with your contacts
             </Text>
             <TouchableOpacity
-                style={[s.startChatBtn, { backgroundColor: accentTeal }]}
+                style={[s.startChatBtn, { backgroundColor: accentPurple }]}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate("NewChat")}
             >
@@ -275,7 +276,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
     // FAB rotation interpolation
     const fabRotateInterpolate = fabRotate.interpolate({
         inputRange: [0, 1],
-        outputRange: ["0deg", "360deg"],
+        outputRange: ["0deg", "135deg"],
     });
 
     return (
@@ -329,27 +330,36 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     <Ionicons name="home" size={22} color={textMain} />
                 </TouchableOpacity>
 
-                {/* ─── Animated New Chat FAB ─── */}
-                <Animated.View style={{
-                    transform: [
-                        { scale: fabScale },
-                        { rotate: fabRotateInterpolate },
-                    ],
-                }}>
-                    <TouchableOpacity
-                        style={[s.newChatBtn, { backgroundColor: accentTeal }]}
-                        activeOpacity={0.8}
-                        onPress={() => navigation.navigate("NewChat")}
-                    >
-                        <Ionicons name="chatbubble-ellipses" size={17} color="#fff" />
-                        <Text style={s.newChatTxt}>New Chat</Text>
-                    </TouchableOpacity>
-                </Animated.View>
-
                 <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate("Settings")}>
                     <Ionicons name="person-outline" size={22} color={textSub} />
                 </TouchableOpacity>
             </View>
+
+            {/* ─── Floating Purple FAB ─── */}
+            <Animated.View style={[s.fabWrap, {
+                transform: [
+                    { scale: fabScale },
+                ],
+            }]}>
+                <TouchableOpacity
+                    style={[s.fab, { backgroundColor: accentPurple }]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                        // Rotate animation on press
+                        Animated.spring(fabRotate, {
+                            toValue: fabRotate.__getValue() === 0 ? 1 : 0,
+                            tension: 60,
+                            friction: 6,
+                            useNativeDriver: true,
+                        }).start();
+                        navigation.navigate("NewChat");
+                    }}
+                >
+                    <Animated.View style={{ transform: [{ rotate: fabRotateInterpolate }] }}>
+                        <Ionicons name="add" size={30} color="#fff" />
+                    </Animated.View>
+                </TouchableOpacity>
+            </Animated.View>
         </View>
     );
 }
@@ -427,15 +437,21 @@ const s = StyleSheet.create({
         position: "absolute", bottom: 0, width: "100%", paddingBottom: Platform.OS === "ios" ? 24 : 12,
     },
     navItem: { padding: 8 },
-    newChatBtn: {
-        flexDirection: "row", alignItems: "center", gap: 6,
-        paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24,
-        // Shadow for elevation
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 6,
+
+    // Floating Action Button
+    fabWrap: {
+        position: "absolute",
+        bottom: Platform.OS === "ios" ? 90 : 76,
+        right: 20,
+        zIndex: 10,
     },
-    newChatTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+    fab: {
+        width: 60, height: 60, borderRadius: 30,
+        justifyContent: "center", alignItems: "center",
+        shadowColor: "#5B5FC7",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        elevation: 8,
+    },
 });

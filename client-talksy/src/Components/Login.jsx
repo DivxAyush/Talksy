@@ -114,7 +114,9 @@ export default function Login({ setIsLoggedIn }) {
        />
        <Text style={s.rememberTxt}>Remember me</Text>
       </View>
-      <Text style={s.forgotTxt}>Forgot Password?</Text>
+      <TouchableOpacity onPress={() => nav.navigate("ForgotPassword")}>
+       <Text style={s.forgotTxt}>Forgot Password?</Text>
+      </TouchableOpacity>
      </View>
 
      {/* API Error */}

@@ -126,8 +126,11 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                 {/* Settings List */}
                 <View style={s.settingsList}>
                     <SettingItem icon="settings-outline" title="Settings" />
-                    <SettingItem icon="code-sandbox" title="Appearance" onPress={openModal} />
-                    <SettingItem icon="lock-closed-outline" title="Change Password" />
+                    <SettingItem icon="color-palette-outline" title="Appearance" onPress={openModal} />
+                    <SettingItem icon="lock-closed-outline" title="Change Password" onPress={() => {
+                        const userMobile = user?.mobile || "";
+                        navigation.navigate("VerifyOTP", { mobile: userMobile, flow: "settings" });
+                    }} />
 
                     <View style={[s.divider, { backgroundColor: isDark ? "#333" : "#eee", marginVertical: 10 }]} />
 

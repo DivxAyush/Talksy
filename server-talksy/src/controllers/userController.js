@@ -193,3 +193,125 @@ export const savePushToken = async (request, reply) => {
   });
  }
 };
+
+// ─── Check if mobile number exists (for forgot password) ───
+export const checkMobile = async (request, reply) => {
+ try {
+  const { mobile } = request.body;
+
+  if (!mobile) {
+   return reply.code(400).send({
+    success: false,
+    message: "Mobile number is required"
+   });
+  }
+
+  const user = await MastUser.findOne({ mobile });
+
+  if (!user) {
+   return reply.code(404).send({
+    success: false,
+    message: "No account found with this mobile number"
+   });
+  }
+
+  return {
+   success: true,
+   message: "Mobile number verified"
+  };
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};
+
+// ─── Change Password (after OTP verification) ───
+export const changePassword = async (request, reply) => {
+ try {
+  const { mobile, newPassword } = request.body;
+
+  if (!mobile || !newPassword) {
+   return reply.code(400).send({
+    success: false,
+    message: "Mobile number and new password are required"
+   });
+  }
+
+  if (newPassword.length < 6) {
+   return reply.code(400).send({
+    success: false,
+    message: "Password must be at least 6 characters"
+   });
+  }
+
+  const user = await MastUser.findOne({ mobile });
+
+  if (!user) {
+   return reply.code(404).send({
+    success: false,
+    message: "User not found"
+   });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  user.password = hashedPassword;
+  await user.save();
+
+  return {
+   success: true,
+   message: "Password changed successfully"
+  };
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};
+
+// ─── Change Password (from Settings - logged in user) ───
+export const changePasswordLoggedIn = async (request, reply) => {
+ try {
+  const { userId } = request.params;
+  const { newPassword } = request.body;
+
+  if (!newPassword) {
+   return reply.code(400).send({
+    success: false,
+    message: "New password is required"
+   });
+  }
+
+  if (newPassword.length < 6) {
+   return reply.code(400).send({
+    success: false,
+    message: "Password must be at least 6 characters"
+   });
+  }
+
+  const user = await MastUser.findById(userId);
+
+  if (!user) {
+   return reply.code(404).send({
+    success: false,
+    message: "User not found"
+   });
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  user.password = hashedPassword;
+  await user.save();
+
+  return {
+   success: true,
+   message: "Password changed successfully"
+  };
+ } catch (error) {
+  reply.code(500).send({
+   success: false,
+   message: error.message
+  });
+ }
+};

@@ -12,6 +12,9 @@ import ChatUser from "./src/screens/chatUser";
 import Settings from "./src/screens/Settings";
 import Profile from "./src/screens/Profile";
 import NewChat from "./src/screens/NewChat";
+import ForgotPassword from "./src/screens/ForgotPassword";
+import VerifyOTP from "./src/screens/VerifyOTP";
+import ChangePassword from "./src/screens/ChangePassword";
 import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { ChatProvider } from "./src/context/ChatContext";
@@ -98,6 +101,8 @@ const MainApp = () => {
          {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
         </Stack.Screen>
         <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
        </>
       ) : (
        <>
@@ -107,6 +112,9 @@ const MainApp = () => {
         <Stack.Screen name="Register">
          {(props) => <Register {...props} setIsLoggedIn={setIsLoggedIn} />}
         </Stack.Screen>
+        <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
        </>
       )}
      </Stack.Navigator>
