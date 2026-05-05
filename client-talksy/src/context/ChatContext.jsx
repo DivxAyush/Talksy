@@ -18,6 +18,28 @@ export const ChatProvider = ({ children }) => {
     // Structure: { [conversationKey]: { messages: [], page: 1, hasMore: false, lastFetchTime: 0 } }
     const messagesCacheRef = useRef({});
 
+    // ─── Load Offline Cache on Startup ───
+    React.useEffect(() => {
+        const loadCache = async () => {
+            try {
+                const storedConvs = await AsyncStorage.getItem("talksy_conversations");
+                if (storedConvs) {
+                    setConversations(JSON.parse(storedConvs));
+                    hasFetchedOnceRef.current = true; // prevent initial loading flickers
+                }
+                const storedMsgs = await AsyncStorage.getItem("talksy_messages");
+                if (storedMsgs) {
+                    messagesCacheRef.current = JSON.parse(storedMsgs);
+                }
+            } catch (err) { console.log("Failed to load cache", err); }
+        };
+        loadCache();
+    }, []);
+
+    const saveMessageCache = () => {
+        AsyncStorage.setItem("talksy_messages", JSON.stringify(messagesCacheRef.current)).catch(() => {});
+    };
+
     // Set which chat is currently being viewed
     const setCurrentChat = useCallback((userId) => {
         currentChatRef.current = userId;
@@ -45,6 +67,7 @@ export const ChatProvider = ({ children }) => {
             const { data } = await axios.get(`${API}/conversations/${userId}`);
             if (data.success) {
                 setConversations(data.conversations);
+                AsyncStorage.setItem("talksy_conversations", JSON.stringify(data.conversations)).catch(() => {});
                 lastFetchTimeRef.current = Date.now();
                 hasFetchedOnceRef.current = true;
             }
@@ -71,6 +94,7 @@ export const ChatProvider = ({ children }) => {
             ...data,
             lastFetchTime: Date.now(),
         };
+        saveMessageCache();
     }, []);
 
     const updateCachedMessage = useCallback((senderId, receiverId, updater) => {
@@ -81,6 +105,7 @@ export const ChatProvider = ({ children }) => {
                 ...cached,
                 messages: updater(cached.messages),
             };
+            saveMessageCache();
         }
     }, []);
 
@@ -95,6 +120,7 @@ export const ChatProvider = ({ children }) => {
                     ...cached,
                     messages: [message, ...cached.messages],
                 };
+                saveMessageCache();
             }
         }
     }, []);
