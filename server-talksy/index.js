@@ -6,6 +6,7 @@ import { initSocket } from "./src/socket/socket.js";
 
 import userRoutes from "./src/routes/userRoutes.js";
 import messageRoutes from "./src/routes/messageRoutes.js";
+import contactRoutes from "./src/routes/contactRoutes.js";
 
 dotenv.config();
 
@@ -23,6 +24,9 @@ fastify.register(userRoutes, { prefix: "/api/users" });
 
 // MESSAGE ROUTES
 fastify.register(messageRoutes, { prefix: "/api/messages" });
+
+// CONTACT ROUTES
+fastify.register(contactRoutes, { prefix: "/api/contacts" });
 
 const start = async () => {
  try {

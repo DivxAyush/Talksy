@@ -11,6 +11,7 @@ import Home from "./src/Components/Home";
 import ChatUser from "./src/screens/chatUser";
 import Settings from "./src/screens/Settings";
 import Profile from "./src/screens/Profile";
+import NewChat from "./src/screens/NewChat";
 import Splash from "./src/Components/Splash";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { ChatProvider } from "./src/context/ChatContext";
@@ -92,6 +93,7 @@ const MainApp = () => {
          {(props) => <Home {...props} setIsLoggedIn={setIsLoggedIn} />}
         </Stack.Screen>
         <Stack.Screen name="chatUser" component={ChatUser} />
+        <Stack.Screen name="NewChat" component={NewChat} options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="Settings" options={{ animation: "slide_from_right" }}>
          {(props) => <Settings {...props} setIsLoggedIn={setIsLoggedIn} />}
         </Stack.Screen>

@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useContext, useCallback } from "react";
+import React, { useEffect, useState, useContext, useCallback, useRef } from "react";
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    Platform, ActivityIndicator, Image,
+    Platform, ActivityIndicator, Image, Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -28,6 +28,10 @@ export default function Home({ navigation, setIsLoggedIn }) {
         setCurrentChat
     } = useContext(ChatContext);
 
+    // ─── Fab Animation ───
+    const fabScale = useRef(new Animated.Value(0)).current;
+    const fabRotate = useRef(new Animated.Value(0)).current;
+
     // Dynamic Theme Colors
     const bg = isDark ? "#111b21" : "#fff";
     const surface = isDark ? "#202c33" : "#f5f5f5";
@@ -36,6 +40,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
     const border = isDark ? "#202c33" : "#f0f0f0";
     const iconBtnBg = isDark ? "#2a3942" : "#f5f5f5";
     const accentGreen = "#25D366";
+    const accentTeal = isDark ? "#00a884" : "#008069";
 
     useEffect(() => {
         (async () => {
@@ -68,11 +73,24 @@ export default function Home({ navigation, setIsLoggedIn }) {
             setCurrentChat(null); // Not in any chat
             loadUsers();
             fetchConversations();
+
+            // Animate FAB in
+            Animated.sequence([
+                Animated.delay(300),
+                Animated.parallel([
+                    Animated.spring(fabScale, { toValue: 1, tension: 60, friction: 7, useNativeDriver: true }),
+                    Animated.timing(fabRotate, { toValue: 1, duration: 400, useNativeDriver: true }),
+                ]),
+            ]).start();
+
+            return () => {
+                fabScale.setValue(0);
+                fabRotate.setValue(0);
+            };
         }, [])
     );
 
-    // ─── Build merged chat list ───
-    // Combine users with conversation data (last message, unread count)
+    // ─── Build chat list: only users with conversations ───
     const getChatList = () => {
         const convMap = {};
         conversations.forEach(conv => {
@@ -80,27 +98,39 @@ export default function Home({ navigation, setIsLoggedIn }) {
             if (uid) convMap[uid] = conv;
         });
 
-        // Users who have conversations, sorted by last message time
         const usersWithConvs = [];
-        const usersWithoutConvs = [];
 
         users.forEach(user => {
             const conv = convMap[user._id];
             if (conv && conv.lastMessage) {
                 usersWithConvs.push({ ...user, conversation: conv });
-            } else {
-                usersWithoutConvs.push({ ...user, conversation: null });
             }
         });
 
-        // Sort conversations by last message time (newest first)
+        // Also include conversations that might not be in users list (from server)
+        conversations.forEach(conv => {
+            const uid = conv._id || conv.userInfo?._id;
+            if (uid && conv.lastMessage && !usersWithConvs.find(u => u._id === uid)) {
+                const userInfo = conv.userInfo || {};
+                usersWithConvs.push({
+                    _id: uid,
+                    username: userInfo.username,
+                    name: userInfo.name,
+                    profilePic: userInfo.profilePic,
+                    about: userInfo.about,
+                    conversation: conv,
+                });
+            }
+        });
+
+        // Sort by last message time (newest first)
         usersWithConvs.sort((a, b) => {
             const tA = new Date(a.conversation.lastMessage.createdAt).getTime();
             const tB = new Date(b.conversation.lastMessage.createdAt).getTime();
             return tB - tA;
         });
 
-        return [...usersWithConvs, ...usersWithoutConvs];
+        return usersWithConvs;
     };
 
     const chatList = getChatList();
@@ -221,6 +251,33 @@ export default function Home({ navigation, setIsLoggedIn }) {
         );
     };
 
+    // ─── Empty State for No Conversations ───
+    const EmptyConversations = () => (
+        <View style={s.emptyWrap}>
+            <View style={[s.emptyIconBg, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
+                <Ionicons name="chatbubbles-outline" size={52} color={isDark ? "#3b5360" : "#c8d6db"} />
+            </View>
+            <Text style={[s.emptyTitle, { color: textMain }]}>No chats yet</Text>
+            <Text style={[s.emptySub, { color: textSub }]}>
+                Tap the button below to start a{"\n"}conversation with your contacts
+            </Text>
+            <TouchableOpacity
+                style={[s.startChatBtn, { backgroundColor: accentTeal }]}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate("NewChat")}
+            >
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={s.startChatBtnTxt}>Start a Chat</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    // FAB rotation interpolation
+    const fabRotateInterpolate = fabRotate.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0deg", "360deg"],
+    });
+
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
             {/* Header */}
@@ -250,7 +307,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 </View>
             </View>
 
-            {/* User List */}
+            {/* Chat List - Only Active Conversations */}
             {loading ? (
                 <View style={s.loaderWrap}>
                     <ActivityIndicator size="large" color={textMain} />
@@ -260,16 +317,9 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     data={filteredList}
                     keyExtractor={(item) => item._id}
                     renderItem={({ item }) => <ChatItem item={item} />}
-                    contentContainerStyle={s.listContent}
+                    contentContainerStyle={[s.listContent, filteredList.length === 0 && { flex: 1 }]}
                     showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={
-                        filteredList.length === 0 && (
-                            <View style={s.emptyWrap}>
-                                <Ionicons name="search-outline" size={48} color={border} />
-                                <Text style={[s.emptyTxt, { color: textSub }]}>No chats found</Text>
-                            </View>
-                        )
-                    }
+                    ListEmptyComponent={<EmptyConversations />}
                 />
             )}
 
@@ -279,10 +329,22 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     <Ionicons name="home" size={22} color={textMain} />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={s.newChatBtn} activeOpacity={0.8}>
-                    <Ionicons name="add" size={20} color="#fff" />
-                    <Text style={s.newChatTxt}>New Chat</Text>
-                </TouchableOpacity>
+                {/* ─── Animated New Chat FAB ─── */}
+                <Animated.View style={{
+                    transform: [
+                        { scale: fabScale },
+                        { rotate: fabRotateInterpolate },
+                    ],
+                }}>
+                    <TouchableOpacity
+                        style={[s.newChatBtn, { backgroundColor: accentTeal }]}
+                        activeOpacity={0.8}
+                        onPress={() => navigation.navigate("NewChat")}
+                    >
+                        <Ionicons name="chatbubble-ellipses" size={17} color="#fff" />
+                        <Text style={s.newChatTxt}>New Chat</Text>
+                    </TouchableOpacity>
+                </Animated.View>
 
                 <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate("Settings")}>
                     <Ionicons name="person-outline" size={22} color={textSub} />
@@ -343,8 +405,20 @@ const s = StyleSheet.create({
 
     // Loading / Empty
     loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
-    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", marginTop: 60 },
-    emptyTxt: { fontSize: 16, marginTop: 12 },
+
+    // Empty State
+    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 40 },
+    emptyIconBg: {
+        width: 110, height: 110, borderRadius: 55,
+        justifyContent: "center", alignItems: "center", marginBottom: 24,
+    },
+    emptyTitle: { fontSize: 20, fontWeight: "700", marginBottom: 8, textAlign: "center" },
+    emptySub: { fontSize: 14, textAlign: "center", lineHeight: 22, marginBottom: 24 },
+    startChatBtn: {
+        flexDirection: "row", alignItems: "center", gap: 6,
+        paddingHorizontal: 24, paddingVertical: 14, borderRadius: 28,
+    },
+    startChatBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
     // Bottom Nav
     bottomNav: {
@@ -355,7 +429,13 @@ const s = StyleSheet.create({
     navItem: { padding: 8 },
     newChatBtn: {
         flexDirection: "row", alignItems: "center", gap: 6,
-        backgroundColor: "#1a1a2e", paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24,
+        paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24,
+        // Shadow for elevation
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 6,
     },
     newChatTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });
