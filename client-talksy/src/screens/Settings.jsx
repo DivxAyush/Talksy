@@ -1,13 +1,14 @@
 import React, { useState, useRef, useContext, useEffect } from "react";
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions,
-    Modal, Pressable, StatusBar, Image
+    Modal, Pressable, StatusBar, Image, Platform
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ThemeContext } from "../context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const PURPLE = "#5B5FC7";
 
 export default function Settings({ navigation, setIsLoggedIn }) {
     const { isDark, toggleTheme } = useContext(ThemeContext);
@@ -32,7 +33,6 @@ export default function Settings({ navigation, setIsLoggedIn }) {
     const surface = isDark ? "#202c33" : "#fff";
     const textMain = isDark ? "#e9edef" : "#111b21";
     const textSub = isDark ? "#8696a0" : "#667781";
-    const iconColor = isDark ? "#8696a0" : "#54656f";
 
     const openModal = () => {
         setModalVisible(true);
@@ -51,21 +51,13 @@ export default function Settings({ navigation, setIsLoggedIn }) {
 
         setCurtainColor(mode === "dark" ? "#111b21" : "#fafafa");
 
-        // Animate curtain from top to bottom
         curtainAnim.setValue(-SCREEN_HEIGHT);
         Animated.timing(curtainAnim, {
-            toValue: 0,
-            duration: 350,
-            useNativeDriver: true
+            toValue: 0, duration: 350, useNativeDriver: true
         }).start(() => {
-            // Flip theme when screen is covered
             toggleTheme(mode);
-
-            // Continue animation downwards off the screen
             Animated.timing(curtainAnim, {
-                toValue: SCREEN_HEIGHT,
-                duration: 350,
-                useNativeDriver: true
+                toValue: SCREEN_HEIGHT, duration: 350, useNativeDriver: true
             }).start();
         });
     };
@@ -89,15 +81,11 @@ export default function Settings({ navigation, setIsLoggedIn }) {
 
             {/* Header */}
             <View style={[s.header, { backgroundColor: bg }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={s.headerBackBtn}>
-                    <Ionicons name="arrow-back" size={24} color={textMain} />
-                </TouchableOpacity>
                 <Text style={[s.headerTitle, { color: textMain }]}>Profile</Text>
-                <View style={{ width: 24 }} />
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Profile Section (Centered) */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+                {/* Profile Section */}
                 <View style={s.profileSection}>
                     <View style={s.avatarWrap}>
                         <View style={[s.avatar, { backgroundColor: isDark ? "#202c33" : "#f0f0f0" }]}>
@@ -113,7 +101,7 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                         <Text style={[s.profileStatus, { color: textSub }]}>@{user?.username || "username"}</Text>
                     </View>
                     <TouchableOpacity
-                        style={s.editProfileBtn}
+                        style={[s.editProfileBtn, { backgroundColor: PURPLE }]}
                         onPress={() => navigation.navigate("Profile")}
                         activeOpacity={0.8}
                     >
@@ -126,14 +114,17 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                 {/* Settings List */}
                 <View style={s.settingsList}>
                     <SettingItem icon="settings-outline" title="Settings" />
-                    <SettingItem icon="code-sandbox" title="Appearance" onPress={openModal} />
-                    <SettingItem icon="lock-closed-outline" title="Change Password" />
+                    <SettingItem icon="color-palette-outline" title="Appearance" onPress={openModal} />
+                    <SettingItem icon="lock-closed-outline" title="Change Password" onPress={() => {
+                        const userMobile = user?.mobile || "";
+                        navigation.navigate("VerifyOTP", { mobile: userMobile, flow: "settings" });
+                    }} />
 
                     <View style={[s.divider, { backgroundColor: isDark ? "#333" : "#eee", marginVertical: 10 }]} />
 
                     <SettingItem icon="help-circle-outline" title="Help & Support" />
 
-                    {/* Logout Item */}
+                    {/* Logout */}
                     <TouchableOpacity
                         style={[s.itemRow, { marginTop: 10 }]}
                         onPress={async () => {
@@ -143,10 +134,10 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                         activeOpacity={0.7}
                     >
                         <View style={s.iconWrap}>
-                            <Ionicons name="log-out-outline" size={24} color={textMain} />
+                            <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
                         </View>
                         <View style={s.itemTextWrap}>
-                            <Text style={[s.itemTitle, { color: textMain, fontWeight: "600" }]}>Log out</Text>
+                            <Text style={[s.itemTitle, { color: "#e74c3c", fontWeight: "600" }]}>Log out</Text>
                         </View>
                     </TouchableOpacity>
                 </View>
@@ -157,61 +148,49 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                 <View style={s.modalOverlay}>
                     <Animated.View style={[s.modalBackdrop, { opacity: sheetAnim }]} />
                     <Pressable style={{ flex: 1 }} onPress={closeModal} />
-
                     <Animated.View style={[s.bottomSheet, {
                         backgroundColor: surface,
-                        transform: [{
-                            translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [300, 0] })
-                        }]
+                        transform: [{ translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [300, 0] }) }]
                     }]}>
                         <View style={s.sheetHandle} />
                         <Text style={[s.sheetTitle, { color: textMain }]}>Choose theme</Text>
 
                         <TouchableOpacity style={s.radioRow} onPress={() => handleThemeChange("light")} activeOpacity={0.7}>
-                            <View style={[s.radioOuter, !isDark && s.radioOuterActive, !isDark && { borderColor: "#00a884" }]}>
-                                {!isDark && <View style={[s.radioInner, { backgroundColor: "#00a884" }]} />}
+                            <View style={[s.radioOuter, !isDark && s.radioOuterActive]}>
+                                {!isDark && <View style={s.radioInner} />}
                             </View>
                             <Text style={[s.radioText, { color: textMain }]}>Light Mode</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity style={s.radioRow} onPress={() => handleThemeChange("dark")} activeOpacity={0.7}>
-                            <View style={[s.radioOuter, isDark && s.radioOuterActive, isDark && { borderColor: "#00a884" }]}>
-                                {isDark && <View style={[s.radioInner, { backgroundColor: "#00a884" }]} />}
+                            <View style={[s.radioOuter, isDark && s.radioOuterActive]}>
+                                {isDark && <View style={s.radioInner} />}
                             </View>
                             <Text style={[s.radioText, { color: textMain }]}>Dark Mode</Text>
                         </TouchableOpacity>
-
                     </Animated.View>
                 </View>
             </Modal>
 
-            {/* Dropping Curtain Animation View */}
+            {/* Curtain Animation */}
             <Animated.View
                 pointerEvents="none"
-                style={[
-                    StyleSheet.absoluteFill,
-                    {
-                        backgroundColor: curtainColor,
-                        zIndex: 9999,
-                        transform: [{ translateY: curtainAnim }]
-                    }
-                ]}
+                style={[StyleSheet.absoluteFill, {
+                    backgroundColor: curtainColor,
+                    zIndex: 9999,
+                    transform: [{ translateY: curtainAnim }]
+                }]}
             />
-
         </View>
     );
 }
 
 const s = StyleSheet.create({
     container: { flex: 1 },
-    header: {
-        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-        paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20,
-    },
-    headerBackBtn: { padding: 4 },
-    headerTitle: { fontSize: 18, fontWeight: "600" },
+    header: { paddingTop: 56, paddingBottom: 16, paddingHorizontal: 20 },
+    headerTitle: { fontSize: 28, fontWeight: "800" },
 
-    profileSection: { alignItems: "center", paddingTop: 20, paddingBottom: 30 },
+    profileSection: { alignItems: "center", paddingTop: 10, paddingBottom: 30 },
     avatarWrap: {
         width: 90, height: 90, borderRadius: 45,
         borderWidth: 1, borderColor: "#ccc",
@@ -223,10 +202,7 @@ const s = StyleSheet.create({
     profileInfo: { alignItems: "center", marginBottom: 20 },
     profileName: { fontSize: 18, fontWeight: "700", marginBottom: 2 },
     profileStatus: { fontSize: 14 },
-    editProfileBtn: {
-        backgroundColor: "#111",
-        paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8,
-    },
+    editProfileBtn: { paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8 },
     editProfileTxt: { color: "#fff", fontSize: 14, fontWeight: "500" },
 
     divider: { height: 1, width: "90%", alignSelf: "center", marginVertical: 10 },
@@ -250,14 +226,12 @@ const s = StyleSheet.create({
         alignSelf: "center", marginBottom: 20,
     },
     sheetTitle: { fontSize: 18, fontWeight: "600", marginBottom: 16 },
-    radioRow: {
-        flexDirection: "row", alignItems: "center", paddingVertical: 16, gap: 16,
-    },
+    radioRow: { flexDirection: "row", alignItems: "center", paddingVertical: 16, gap: 16 },
     radioOuter: {
         width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#777",
         justifyContent: "center", alignItems: "center",
     },
-    radioOuterActive: { borderColor: "#00a884" },
-    radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#00a884" },
+    radioOuterActive: { borderColor: PURPLE },
+    radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: PURPLE },
     radioText: { fontSize: 16, fontWeight: "500" },
 });

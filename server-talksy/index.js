@@ -1,11 +1,13 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import dotenv from "dotenv";
 import connectDB from "./src/config/db.js";
 import { initSocket } from "./src/socket/socket.js";
 
 import userRoutes from "./src/routes/userRoutes.js";
 import messageRoutes from "./src/routes/messageRoutes.js";
+import contactRoutes from "./src/routes/contactRoutes.js";
 
 dotenv.config();
 
@@ -19,10 +21,20 @@ fastify.register(cors, {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
+// ✅ Multipart support for file uploads (50MB limit)
+fastify.register(multipart, {
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50 MB
+  },
+});
+
 fastify.register(userRoutes, { prefix: "/api/users" });
 
 // MESSAGE ROUTES
 fastify.register(messageRoutes, { prefix: "/api/messages" });
+
+// CONTACT ROUTES
+fastify.register(contactRoutes, { prefix: "/api/contacts" });
 
 const start = async () => {
  try {

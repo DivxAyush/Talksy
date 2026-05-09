@@ -15,8 +15,29 @@ const userMessageSchema = new mongoose.Schema({
   },
   message: {
     type: String,
-    required: true,
+    default: "",
     trim: true
+  },
+  messageType: {
+    type: String,
+    enum: ["text", "image", "video", "audio", "voice"],
+    default: "text"
+  },
+  mediaUrl: {
+    type: String,
+    default: ""
+  },
+  mediaThumbnail: {
+    type: String,
+    default: ""
+  },
+  mediaDuration: {
+    type: Number,
+    default: 0
+  },
+  mediaSize: {
+    type: Number,
+    default: 0
   },
   status: {
     type: String,

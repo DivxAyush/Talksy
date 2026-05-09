@@ -2,17 +2,23 @@ import UserMessage from "../models/userMessage.js";
 import MastUser from "../models/userModel.js";
 import { getReceiverSocketId, io } from "../socket/socket.js";
 import { sendPushNotification } from "../utils/pushNotification.js";
+import { uploadToCloudinary } from "../utils/cloudinary.js";
 import mongoose from "mongoose";
 
 // ─── Send Message ───
 export const sendMessage = async (request, reply) => {
     try {
-        const { senderId, receiverId, message, replyTo } = request.body;
+        const { senderId, receiverId, message, replyTo, messageType, mediaUrl, mediaThumbnail, mediaDuration, mediaSize } = request.body;
 
         const newMessage = new UserMessage({
             senderId,
             receiverId,
-            message,
+            message: message || "",
+            messageType: messageType || "text",
+            mediaUrl: mediaUrl || "",
+            mediaThumbnail: mediaThumbnail || "",
+            mediaDuration: mediaDuration || 0,
+            mediaSize: mediaSize || 0,
             status: "sent",
             replyTo: replyTo || null
         });
@@ -59,10 +65,17 @@ export const sendMessage = async (request, reply) => {
 
                 if (receiver?.pushToken) {
                     const senderName = sender?.name || sender?.username || "Someone";
+                    // Use appropriate preview text for media messages
+                    const msgType = messageType || "text";
+                    let previewText = message;
+                    if (msgType === "image") previewText = "📷 Photo";
+                    else if (msgType === "video") previewText = "🎥 Video";
+                    else if (msgType === "audio" || msgType === "voice") previewText = "🎤 Voice message";
+
                     await sendPushNotification(
                         receiver.pushToken,
                         senderName,
-                        message,
+                        previewText,
                         {
                             type: "new_message",
                             senderId,
@@ -309,6 +322,115 @@ export const deleteMessage = async (request, reply) => {
         };
 
     } catch (error) {
+        reply.code(500).send({ success: false, message: error.message });
+    }
+};
+
+// ─── Mark All Pending Messages as Delivered (called when app comes to foreground) ───
+export const markAsDelivered = async (request, reply) => {
+    try {
+        const { userId } = request.body;
+
+        if (!userId) {
+            return reply.code(400).send({ success: false, message: "userId is required" });
+        }
+
+        // Find all "sent" messages for this user
+        const pendingMessages = await UserMessage.find({
+            receiverId: userId,
+            status: "sent",
+            isDeleted: false
+        }).lean();
+
+        if (pendingMessages.length === 0) {
+            return { success: true, message: "No pending messages", delivered: 0 };
+        }
+
+        // Update all to delivered
+        const messageIds = pendingMessages.map(m => m._id);
+        await UserMessage.updateMany(
+            { _id: { $in: messageIds } },
+            { status: "delivered" }
+        );
+
+        // Notify each sender about delivery via socket
+        const senderGroups = {};
+        pendingMessages.forEach(msg => {
+            const sid = msg.senderId.toString();
+            if (!senderGroups[sid]) senderGroups[sid] = [];
+            senderGroups[sid].push(msg._id.toString());
+        });
+
+        Object.entries(senderGroups).forEach(([senderId, msgIds]) => {
+            const senderSocketId = getReceiverSocketId(senderId);
+            if (senderSocketId) {
+                msgIds.forEach(msgId => {
+                    io.to(senderSocketId).emit("message_status_update", {
+                        messageId: msgId,
+                        status: "delivered"
+                    });
+                });
+            }
+        });
+
+        return {
+            success: true,
+            message: "Messages marked as delivered",
+            delivered: messageIds.length
+        };
+
+    } catch (error) {
+        reply.code(500).send({ success: false, message: error.message });
+    }
+};
+
+// ─── Upload Media to Cloudinary ───
+export const uploadMedia = async (request, reply) => {
+    try {
+        const file = await request.file();
+
+        if (!file) {
+            return reply.code(400).send({ success: false, message: "No file provided" });
+        }
+
+        // Read file buffer
+        const chunks = [];
+        for await (const chunk of file.file) {
+            chunks.push(chunk);
+        }
+        const buffer = Buffer.concat(chunks);
+
+        // Determine resource type based on mimetype
+        let resourceType = "auto";
+        let folder = "talksy/media";
+
+        if (file.mimetype.startsWith("image/")) {
+            resourceType = "image";
+            folder = "talksy/images";
+        } else if (file.mimetype.startsWith("video/")) {
+            resourceType = "video";
+            folder = "talksy/videos";
+        } else if (file.mimetype.startsWith("audio/")) {
+            resourceType = "video"; // Cloudinary treats audio as video resource type
+            folder = "talksy/audio";
+        }
+
+        const result = await uploadToCloudinary(buffer, folder, resourceType);
+
+        return {
+            success: true,
+            data: {
+                url: result.url,
+                format: result.format,
+                size: result.bytes,
+                duration: result.duration,
+                width: result.width,
+                height: result.height,
+            }
+        };
+
+    } catch (error) {
+        console.error("Upload error:", error);
         reply.code(500).send({ success: false, message: error.message });
     }
 };

@@ -3,13 +3,18 @@ import {
  getMessages,
  getConversations,
  markAsRead,
- deleteMessage
+ deleteMessage,
+ markAsDelivered,
+ uploadMedia
 } from "../controllers/messageController.js";
 
 export default async function messageRoutes(fastify, options) {
 
  // Send a new message
  fastify.post("/send-message", sendMessage);
+
+ // Upload media (image/video/audio) to Cloudinary
+ fastify.post("/upload-media", uploadMedia);
 
  // Get paginated messages between two users
  fastify.get("/messages/:senderId/:receiverId", getMessages);
@@ -22,5 +27,8 @@ export default async function messageRoutes(fastify, options) {
 
  // Delete a message
  fastify.put("/delete/:messageId", deleteMessage);
+
+ // Mark pending messages as delivered (called when app comes to foreground)
+ fastify.post("/mark-delivered", markAsDelivered);
 
 }

@@ -1,23 +1,23 @@
-import React, { useEffect, useState, useContext, useCallback } from "react";
+import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } from "react";
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-    Platform, ActivityIndicator, Image,
+    Platform, ActivityIndicator, Image, Modal, Animated, Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeContext } from "../context/ThemeContext";
 import { SocketContext } from "../context/SocketContext";
 import { ChatContext } from "../context/ChatContext";
 import { useFocusEffect } from "@react-navigation/native";
 
-const API_USERS = "https://talksy-3py1.onrender.com/api/users";
-
 export default function Home({ navigation, setIsLoggedIn }) {
-    const [users, setUsers] = useState([]);
     const [search, setSearch] = useState("");
-    const [loading, setLoading] = useState(true);
     const [currentUserId, setCurrentUserId] = useState("");
+
+    // Profile popup state
+    const [popupUser, setPopupUser] = useState(null);
+    const [popupVisible, setPopupVisible] = useState(false);
+    const popupAnim = useRef(new Animated.Value(0)).current;
 
     const { isDark } = useContext(ThemeContext);
     const { onlineUsers } = useContext(SocketContext);
@@ -34,7 +34,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
     const textMain = isDark ? "#e9edef" : "#1a1a2e";
     const textSub = isDark ? "#8696a0" : "#666";
     const border = isDark ? "#202c33" : "#f0f0f0";
-    const iconBtnBg = isDark ? "#2a3942" : "#f5f5f5";
+    const accentPurple = "#5B5FC7";
     const accentGreen = "#25D366";
 
     useEffect(() => {
@@ -44,67 +44,27 @@ export default function Home({ navigation, setIsLoggedIn }) {
         })();
     }, []);
 
-    const handleLogout = async () => {
-        await AsyncStorage.clear();
-        setIsLoggedIn(false);
-    };
-
-    const loadUsers = async () => {
-        try {
-            const id = await AsyncStorage.getItem("userId");
-            const { data } = await axios.get(`${API_USERS}/users`);
-            const filtered = data.users.filter(u => u._id !== id);
-            setUsers(filtered);
-        } catch (err) {
-            console.log(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Refresh conversations when screen is focused
+    // Smart fetch — only re-fetches if stale (>30s) thanks to ChatContext caching
     useFocusEffect(
         useCallback(() => {
             setCurrentChat(null); // Not in any chat
-            loadUsers();
-            fetchConversations();
+            fetchConversations(); // Will skip if cache is fresh
         }, [])
     );
 
-    // ─── Build merged chat list ───
-    // Combine users with conversation data (last message, unread count)
-    const getChatList = () => {
-        const convMap = {};
-        conversations.forEach(conv => {
-            const uid = conv._id || conv.userInfo?._id;
-            if (uid) convMap[uid] = conv;
-        });
-
-        // Users who have conversations, sorted by last message time
-        const usersWithConvs = [];
-        const usersWithoutConvs = [];
-
-        users.forEach(user => {
-            const conv = convMap[user._id];
-            if (conv && conv.lastMessage) {
-                usersWithConvs.push({ ...user, conversation: conv });
-            } else {
-                usersWithoutConvs.push({ ...user, conversation: null });
-            }
-        });
-
-        // Sort conversations by last message time (newest first)
-        usersWithConvs.sort((a, b) => {
-            const tA = new Date(a.conversation.lastMessage.createdAt).getTime();
-            const tB = new Date(b.conversation.lastMessage.createdAt).getTime();
-            return tB - tA;
-        });
-
-        return [...usersWithConvs, ...usersWithoutConvs];
-    };
-
-    const chatList = getChatList();
-
+    // ─── Build chat list directly from conversations (no separate users API call) ───
+    const chatList = useMemo(() => {
+        return conversations
+            .filter(conv => conv.lastMessage)
+            .map(conv => ({
+                _id: conv._id || conv.userInfo?._id,
+                username: conv.userInfo?.username,
+                name: conv.userInfo?.name,
+                profilePic: conv.userInfo?.profilePic,
+                about: conv.userInfo?.about,
+                conversation: conv,
+            }));
+    }, [conversations]);
     const filteredList = search
         ? chatList.filter(u =>
             u.username?.toLowerCase().includes(search.toLowerCase()) ||
@@ -114,6 +74,19 @@ export default function Home({ navigation, setIsLoggedIn }) {
 
     const handleSearch = (text) => {
         setSearch(text);
+    };
+
+    // ─── Profile Popup ───
+    const showProfilePopup = (user) => {
+        setPopupUser(user);
+        setPopupVisible(true);
+        Animated.timing(popupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    };
+    const hideProfilePopup = () => {
+        Animated.timing(popupAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+            setPopupVisible(false);
+            setPopupUser(null);
+        });
     };
 
     // ─── Format timestamp for chat list ───
@@ -156,11 +129,20 @@ export default function Home({ navigation, setIsLoggedIn }) {
         const hasUnread = unreadCount > 0;
         const isSentByMe = lastMsg?.senderId === currentUserId;
 
-        const previewText = lastMsg
-            ? (lastMsg.isDeleted
-                ? "🚫 This message was deleted"
-                : lastMsg.message)
-            : "Tap to start chatting...";
+        let previewText = "Tap to start chatting...";
+        if (lastMsg) {
+            if (lastMsg.isDeleted) {
+                previewText = "🚫 This message was deleted";
+            } else if (lastMsg.messageType === "image") {
+                previewText = "📷 Photo";
+            } else if (lastMsg.messageType === "video") {
+                previewText = "🎥 Video";
+            } else if (lastMsg.messageType === "voice") {
+                previewText = "🎤 Voice message";
+            } else {
+                previewText = lastMsg.message;
+            }
+        }
 
         return (
             <TouchableOpacity
@@ -168,7 +150,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 activeOpacity={0.7}
                 onPress={() => navigation.navigate("chatUser", { user: item })}
             >
-                <View>
+                <TouchableOpacity onPress={() => showProfilePopup(item)} activeOpacity={0.8}>
                     <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
                         {item?.profilePic ? (
                             <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
@@ -179,7 +161,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     {onlineUsers.includes(item._id) && (
                         <View style={[s.onlineDot, { borderColor: bg }]} />
                     )}
-                </View>
+                </TouchableOpacity>
                 <View style={s.chatInfo}>
                     <View style={s.chatHeader}>
                         <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
@@ -221,15 +203,34 @@ export default function Home({ navigation, setIsLoggedIn }) {
         );
     };
 
+    // ─── Empty State for No Conversations ───
+    const EmptyConversations = () => (
+        <View style={s.emptyWrap}>
+            <View style={[s.emptyIconBg, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
+                <Ionicons name="chatbubbles-outline" size={52} color={isDark ? "#3b5360" : "#c8d6db"} />
+            </View>
+            <Text style={[s.emptyTitle, { color: textMain }]}>No chats yet</Text>
+            <Text style={[s.emptySub, { color: textSub }]}>
+                Tap the button below to start a{"\n"}conversation with your contacts
+            </Text>
+            <TouchableOpacity
+                style={[s.startChatBtn, { backgroundColor: accentPurple }]}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate("NewChat")}
+            >
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={s.startChatBtnTxt}>Start a Chat</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
             {/* Header */}
             <View style={[s.header, { backgroundColor: bg }]}>
                 <View style={s.headerTop}>
                     <Text style={[s.logo, { color: textMain }]}>Talksy</Text>
-                    <TouchableOpacity style={[s.iconBtn, { backgroundColor: iconBtnBg }]} onPress={handleLogout}>
-                        <Ionicons name="ellipsis-vertical" size={20} color={textMain} />
-                    </TouchableOpacity>
                 </View>
 
                 {/* Search */}
@@ -250,8 +251,8 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 </View>
             </View>
 
-            {/* User List */}
-            {loading ? (
+            {/* Chat List */}
+            {loadingConversations && conversations.length === 0 ? (
                 <View style={s.loaderWrap}>
                     <ActivityIndicator size="large" color={textMain} />
                 </View>
@@ -260,34 +261,44 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     data={filteredList}
                     keyExtractor={(item) => item._id}
                     renderItem={({ item }) => <ChatItem item={item} />}
-                    contentContainerStyle={s.listContent}
+                    contentContainerStyle={[s.listContent, filteredList.length === 0 && { flex: 1 }]}
                     showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={
-                        filteredList.length === 0 && (
-                            <View style={s.emptyWrap}>
-                                <Ionicons name="search-outline" size={48} color={border} />
-                                <Text style={[s.emptyTxt, { color: textSub }]}>No chats found</Text>
-                            </View>
-                        )
-                    }
+                    ListEmptyComponent={<EmptyConversations />}
                 />
             )}
 
-            {/* Bottom Navigation */}
-            <View style={[s.bottomNav, { backgroundColor: bg, borderTopColor: border }]}>
-                <TouchableOpacity style={s.navItem}>
-                    <Ionicons name="home" size={22} color={textMain} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={s.newChatBtn} activeOpacity={0.8}>
-                    <Ionicons name="add" size={20} color="#fff" />
-                    <Text style={s.newChatTxt}>New Chat</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={s.navItem} onPress={() => navigation.navigate("Settings")}>
-                    <Ionicons name="person-outline" size={22} color={textSub} />
-                </TouchableOpacity>
-            </View>
+            {/* ─── Profile Popup Modal ─── */}
+            <Modal visible={popupVisible} transparent animationType="none" onRequestClose={hideProfilePopup}>
+                <Pressable style={s.popupOverlay} onPress={hideProfilePopup}>
+                    <Animated.View style={[s.popupBackdrop, { opacity: popupAnim }]} />
+                    <Animated.View style={[s.popupCard, {
+                        backgroundColor: isDark ? "#202c33" : "#fff",
+                        opacity: popupAnim,
+                        transform: [{ scale: popupAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+                    }]}>
+                        {popupUser?.profilePic ? (
+                            <Image
+                                source={{ uri: popupUser.profilePic }}
+                                style={s.popupImage}
+                            />
+                        ) : (
+                            <View style={[s.popupAvatarPlaceholder, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                                <Text style={s.popupAvatarTxt}>
+                                    {popupUser?.username?.charAt(0)?.toUpperCase()}
+                                </Text>
+                            </View>
+                        )}
+                        <Text style={[s.popupName, { color: textMain }]}>
+                            {popupUser?.name || popupUser?.username}
+                        </Text>
+                        {popupUser?.about ? (
+                            <Text style={[s.popupAbout, { color: textSub }]}>
+                                {popupUser.about}
+                            </Text>
+                        ) : null}
+                    </Animated.View>
+                </Pressable>
+            </Modal>
         </View>
     );
 }
@@ -343,19 +354,37 @@ const s = StyleSheet.create({
 
     // Loading / Empty
     loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
-    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", marginTop: 60 },
-    emptyTxt: { fontSize: 16, marginTop: 12 },
 
-    // Bottom Nav
-    bottomNav: {
-        flexDirection: "row", justifyContent: "space-around", alignItems: "center",
-        paddingVertical: 12, borderTopWidth: 1,
-        position: "absolute", bottom: 0, width: "100%", paddingBottom: Platform.OS === "ios" ? 24 : 12,
+    // Empty State
+    emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 40 },
+    emptyIconBg: {
+        width: 110, height: 110, borderRadius: 55,
+        justifyContent: "center", alignItems: "center", marginBottom: 24,
     },
-    navItem: { padding: 8 },
-    newChatBtn: {
+    emptyTitle: { fontSize: 20, fontWeight: "700", marginBottom: 8, textAlign: "center" },
+    emptySub: { fontSize: 14, textAlign: "center", lineHeight: 22, marginBottom: 24 },
+    startChatBtn: {
         flexDirection: "row", alignItems: "center", gap: 6,
-        backgroundColor: "#1a1a2e", paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24,
+        paddingHorizontal: 24, paddingVertical: 14, borderRadius: 28,
     },
-    newChatTxt: { color: "#fff", fontSize: 14, fontWeight: "700" },
+    startChatBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
+
+    // Profile Popup
+    popupOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
+    popupBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.6)" },
+    popupCard: {
+        width: 280, borderRadius: 20, alignItems: "center",
+        paddingBottom: 24, overflow: "hidden",
+        shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2, shadowRadius: 20, elevation: 12,
+    },
+    popupImage: { width: 280, height: 280, resizeMode: "cover" },
+    popupAvatarPlaceholder: {
+        width: 280, height: 280, justifyContent: "center", alignItems: "center",
+    },
+    popupAvatarTxt: { color: "#fff", fontSize: 80, fontWeight: "700" },
+    popupName: { fontSize: 20, fontWeight: "700", marginTop: 16, textAlign: "center" },
+    popupAbout: { fontSize: 14, marginTop: 4, textAlign: "center", paddingHorizontal: 16 },
+
 });
+
