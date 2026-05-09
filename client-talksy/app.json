@@ -41,6 +41,13 @@
           "icon": "./assets/TalksyAppIcon.png",
           "color": "#25D366"
         }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Allow Talksy to access your camera for video calls.",
+          "microphonePermission": "Allow Talksy to access your microphone for audio/video calls."
+        }
       ]
     ],
 

@@ -138,6 +138,41 @@ export const initSocket = (server) => {
    });
   });
 
+  // ─── WebRTC Signaling ───
+  socket.on("call_user", (data) => {
+   const receiverSocketId = userSocketMap[data.userToCall];
+   if (receiverSocketId) {
+    io.to(receiverSocketId).emit("call_user", { 
+     signal: data.signalData, 
+     from: data.from, 
+     isVideo: data.isVideo, 
+     callerName: data.callerName, 
+     callerPic: data.callerPic 
+    });
+   }
+  });
+
+  socket.on("answer_call", (data) => {
+   const callerSocketId = userSocketMap[data.to];
+   if (callerSocketId) {
+    io.to(callerSocketId).emit("call_accepted", data.signal);
+   }
+  });
+
+  socket.on("ice_candidate", (data) => {
+   const receiverSocketId = userSocketMap[data.to];
+   if (receiverSocketId) {
+    io.to(receiverSocketId).emit("ice_candidate", data.candidate);
+   }
+  });
+
+  socket.on("end_call", (data) => {
+   const receiverSocketId = userSocketMap[data.to];
+   if (receiverSocketId) {
+    io.to(receiverSocketId).emit("call_ended");
+   }
+  });
+
   // ─── Disconnect ───
   socket.on("disconnect", () => {
    console.log("User disconnected:", socket.id);

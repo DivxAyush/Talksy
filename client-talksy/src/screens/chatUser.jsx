@@ -756,10 +756,16 @@ export default function ChatUser({ route, navigation }) {
       </Text>
      </View>
      <View style={s.headerActions}>
-      <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}>
+      <TouchableOpacity 
+       style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}
+       onPress={() => navigation.navigate('VideoCallScreen', { user, isCaller: true })}
+      >
        <Ionicons name="videocam-outline" size={22} color={textMain} />
       </TouchableOpacity>
-      <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}>
+      <TouchableOpacity 
+       style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}
+       onPress={() => navigation.navigate('CallScreen', { user, isCaller: true })}
+      >
        <Ionicons name="call-outline" size={20} color={textMain} />
       </TouchableOpacity>
      </View>
