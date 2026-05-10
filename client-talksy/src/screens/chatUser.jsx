@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useContext, useMemo } 
 import {
  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
  Platform, ActivityIndicator, Keyboard, Animated, Pressable, Alert,
- KeyboardAvoidingView, Modal, Vibration, Image, Dimensions, PanResponder, StatusBar
+ KeyboardAvoidingView, Modal, Vibration, Image, Dimensions, PanResponder, StatusBar, AppState
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
@@ -18,6 +18,194 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
 
+// ─── Centralized Message Merge Utility (Optimized) ───
+const mergeMessages = (prev, incoming, isAppend = false) => {
+  const mergedMap = new Map();
+  
+  if (isAppend) {
+    // Pagination: existing messages come FIRST (newest), incoming comes LAST (older)
+    prev.forEach(m => mergedMap.set(m._id || m.clientId, m));
+    incoming.forEach(m => {
+      const id = m._id || m.clientId;
+      if (!mergedMap.has(id)) {
+        mergedMap.set(id, m);
+      } else {
+        // Update existing with server data
+        mergedMap.set(id, { ...mergedMap.get(id), ...m });
+      }
+    });
+  } else {
+    // Sync/New/Realtime: incoming messages come FIRST (newest), existing follows
+    incoming.forEach(m => mergedMap.set(m._id || m.clientId, m));
+    prev.forEach(m => {
+      const id = m._id || m.clientId;
+      if (!mergedMap.has(id)) {
+        mergedMap.set(id, m);
+      }
+      // If we already have it from incoming (server/new), we don't overwrite with old local data
+    });
+  }
+  return Array.from(mergedMap.values());
+};
+
+const formatDuration = (sec) => {
+ const m = Math.floor(sec / 60);
+ const s = Math.floor(sec % 60);
+ return `${m}:${s < 10 ? "0" : ""}${s}`;
+};
+
+const formatTime = (date) => {
+ if (!date) return "";
+ return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+// ─── Status ticks component ───
+const StatusTicks = React.memo(({ status }) => {
+ if (status === "pending") return <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.6)" />;
+ if (status === "failed") return <Ionicons name="alert-circle" size={16} color="#e74c3c" />;
+ if (status === "read") return <Ionicons name="checkmark-done" size={16} color="#53bdeb" />;
+ if (status === "delivered") return <Ionicons name="checkmark-done" size={16} color="rgba(255,255,255,0.6)" />;
+ return <Ionicons name="checkmark" size={16} color="rgba(255,255,255,0.6)" />;
+});
+
+
+
+// ─── Voice Player Component (Isolated & Throttled) ───
+const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
+ const { playAudio, pauseAudio, activeAudioId } = useContext(ChatContext);
+ const [isPlaying, setIsPlaying] = useState(false);
+ const [progress, setProgress] = useState(0);
+ const [duration, setDuration] = useState(item.mediaDuration || 0);
+ const lastUpdateRef = useRef(0);
+
+ const isActive = activeAudioId === item._id;
+
+ const onStatusUpdate = useCallback((status) => {
+  if (status.isLoaded) {
+   const now = Date.now();
+   if (now - lastUpdateRef.current > 100 || status.didJustFinish) {
+    setIsPlaying(status.isPlaying);
+    setProgress(status.positionMillis / (status.durationMillis || 1));
+    if (status.durationMillis) setDuration(status.durationMillis / 1000);
+    lastUpdateRef.current = now;
+   }
+  } else {
+   setIsPlaying(false);
+  }
+ }, []);
+
+ useEffect(() => {
+  if (!isActive) {
+   setIsPlaying(false);
+   setProgress(0);
+  }
+ }, [isActive]);
+
+ const handleTogglePlay = async () => {
+  try {
+   if (isPlaying && isActive) {
+    await pauseAudio();
+    setIsPlaying(false);
+   } else {
+    await playAudio(item.mediaUrl, item._id, onStatusUpdate);
+    setIsPlaying(true);
+   }
+  } catch (err) { console.log("Voice play error:", err); }
+ };
+
+ return (
+  <View style={[s.voiceBubble, { backgroundColor: "transparent" }]}>
+   <TouchableOpacity onPress={handleTogglePlay} style={[s.playBtn, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : "rgba(168,85,247,0.1)" }]}>
+    <Ionicons name={isPlaying ? "pause" : "play"} size={20} color={isMe ? "#fff" : accentPurple} />
+   </TouchableOpacity>
+   <View style={s.voiceInfo}>
+    <View style={s.waveform}>
+     <View style={[s.progressLine, { width: `${progress * 100}%`, backgroundColor: isMe ? "#fff" : accentPurple }]} />
+     <View style={[s.bgLine, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)" }]} />
+    </View>
+    <Text style={[s.voiceDuration, { color: isMe ? "rgba(255,255,255,0.7)" : textSub }]}>
+     {formatDuration(duration)}
+    </Text>
+   </View>
+  </View>
+ );
+});
+
+// ─── Message Bubble Component (Isolated) ───
+const MessageBubble = React.memo(({ item, senderId, displayName, myBubble, otherBubble, myBubbleTxt, otherBubbleTxt, accentPurple, textSub, onLongPress, onPressMedia }) => {
+ const isMe = item.senderId === senderId;
+ const deleted = item.isDeleted;
+ const isMedia = item.messageType && item.messageType !== "text";
+
+ return (
+  <TouchableOpacity
+   style={[s.bubbleWrap, isMe ? s.bubbleRight : s.bubbleLeft]}
+   onLongPress={() => !deleted && onLongPress(item)}
+   onPress={() => {
+    if (isMedia && !deleted) {
+     onPressMedia(item);
+    }
+   }}
+   activeOpacity={0.8}
+   disabled={deleted && !isMedia}
+  >
+   {/* Reply reference */}
+   {item.replyToMessage && !deleted && (
+    <View style={[s.replyRef, { backgroundColor: isMe ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)", borderLeftColor: isMe ? "#53bdeb" : "#25D366" }]}>
+     <Text style={[s.replyRefName, { color: isMe ? "#53bdeb" : "#25D366" }]}>
+      {item.replyToMessage.senderId === senderId ? "You" : displayName}
+     </Text>
+     <Text style={[s.replyRefTxt, { color: isMe ? "rgba(255,255,255,0.7)" : textSub }]} numberOfLines={1}>
+      {item.replyToMessage.isDeleted ? "This message was deleted" : item.replyToMessage.message}
+     </Text>
+    </View>
+   )}
+
+   <View style={[
+    s.bubble,
+    isMe ? { backgroundColor: myBubble, borderBottomRightRadius: 4 } : { backgroundColor: otherBubble, borderBottomLeftRadius: 4 },
+    isMedia && { padding: 4, borderRadius: 12 }
+   ]}>
+    {deleted ? (
+     <Text style={[s.deletedTxt, { color: isMe ? "rgba(255,255,255,0.5)" : textSub }, { paddingHorizontal: 10, paddingVertical: 4 }]}>
+      🚫 This message was deleted
+     </Text>
+    ) : (
+     <>
+      {item.messageType === "image" && (
+       <View style={s.mediaContainer}>
+        <Image source={{ uri: item.mediaUrl }} style={s.bubbleImage} />
+       </View>
+      )}
+      {item.messageType === "video" && (
+       <View style={s.mediaContainer}>
+        <Image source={{ uri: item.mediaThumbnail || item.mediaUrl }} style={s.bubbleImage} />
+        <View style={s.playOverlay}>
+         <Ionicons name="play" size={32} color="#fff" />
+        </View>
+       </View>
+      )}
+      {item.messageType === "voice" && (
+       <VoicePlayer item={item} isMe={isMe} accentPurple={accentPurple} textSub={textSub} />
+      )}
+
+      {item.message ? (
+       <Text style={[s.bubbleTxt, isMe ? { color: myBubbleTxt } : { color: otherBubbleTxt }, isMedia && { paddingHorizontal: 8, paddingVertical: 4 }]}>
+        {item.message}
+       </Text>
+      ) : null}
+     </>
+    )}
+
+    <View style={[s.metaRow, isMedia && { paddingHorizontal: 8, paddingBottom: 4 }]}>
+     <Text style={[s.timeTxt, { color: isMe ? "rgba(255,255,255,0.5)" : "#aaa" }]}>{formatTime(item.createdAt)}</Text>
+     {isMe && !deleted && <View style={{ marginLeft: 4 }}><StatusTicks status={item.status} /></View>}
+    </View>
+   </View>
+  </TouchableOpacity>
+ );
+});
+
 export default function ChatUser({ route, navigation }) {
  const { user } = route.params;
  const receiverId = user._id || user.id;
@@ -26,14 +214,6 @@ export default function ChatUser({ route, navigation }) {
  const [displayName, setDisplayName] = useState(user.name || user.username || "User");
  const [displayPic, setDisplayPic] = useState(user.profilePic || "");
 
- const [audioPlayer, setAudioPlayer] = useState({
-  messageId: null,
-  url: null,
-  isPlaying: false,
-  progress: 0,
-  duration: 1
- });
- const videoRef = useRef(null);
  const [messages, setMessages] = useState([]);
  const [text, setText] = useState("");
  const textRef = useRef("");
@@ -47,7 +227,6 @@ export default function ChatUser({ route, navigation }) {
  const [barWidth, setBarWidth] = useState(1);
  const [hasMore, setHasMore] = useState(false);
  const [loadingMore, setLoadingMore] = useState(false);
- const [currentlyPlaying, setCurrentlyPlaying] = useState(null); // { messageId, sound, progress: 0-100 }
 
  // Profile popup state
  const [popupVisible, setPopupVisible] = useState(false);
@@ -71,6 +250,11 @@ export default function ChatUser({ route, navigation }) {
  const typingTimerRef = useRef(null);
  const isTypingRef = useRef(false);
  const actionAnim = useRef(new Animated.Value(0)).current;
+ const processedReadIdsRef = useRef(new Set());
+ const isFetchingRef = useRef(false);
+ const requestVersionRef = useRef(0);
+ const incomingBufferRef = useRef([]);
+ const batchTimerRef = useRef(null);
 
  // Typing dots animation
  const dot1 = useRef(new Animated.Value(0)).current;
@@ -139,11 +323,12 @@ export default function ChatUser({ route, navigation }) {
   };
  }, []);
 
- // ─── Fetch messages (with cache support) ───
- const fetchMessages = async (pg = 1, append = false) => {
+ // ─── Fetch messages (with versioning & race-condition safety) ───
+ const fetchMessages = async (pg = 1, append = false, afterTimestamp = null) => {
+  const version = ++requestVersionRef.current;
+  
   try {
-   // On first load, check cache
-   if (pg === 1 && !append && senderId) {
+   if (pg === 1 && !append && !afterTimestamp && senderId) {
     const cached = getCachedMessages(senderId, receiverId);
     if (cached && cached.messages.length > 0 && (Date.now() - cached.lastFetchTime) < 60000) {
      setMessages(cached.messages);
@@ -154,48 +339,108 @@ export default function ChatUser({ route, navigation }) {
     }
    }
 
+   if (isFetchingRef.current && !afterTimestamp) return;
+   isFetchingRef.current = true;
    if (pg > 1) setLoadingMore(true);
-   const { data } = await axios.get(`${API}/messages/${senderId}/${receiverId}?page=${pg}&limit=50`);
+   
+   let url = `${API}/${senderId}/${receiverId}?page=${pg}&limit=50`;
+   if (afterTimestamp) url += `&after=${encodeURIComponent(afterTimestamp)}`;
+
+   const { data } = await axios.get(url);
+   
+   // Cancel if a newer request has started
+   if (version !== requestVersionRef.current) return;
+
    if (data.success) {
-    const reversed = data.messages.reverse();
-    if (append) {
-     setMessages(prev => [...prev, ...reversed]);
-    } else {
-     setMessages(reversed);
-     // Cache the messages
-     setCachedMessages(senderId, receiverId, {
-      messages: reversed,
-      page: pg,
-      hasMore: data.pagination?.hasMore || false,
-     });
+    const incoming = data.messages.reverse();
+    setMessages(prev => {
+       const merged = mergeMessages(prev, incoming, append || !!afterTimestamp);
+       // Sync to cache
+       if (pg === 1) syncMessageToCache(senderId, receiverId, merged);
+       return merged;
+    });
+    
+    if (!afterTimestamp) {
+     setHasMore(data.pagination?.hasMore || false);
+     setPage(pg);
     }
-    setHasMore(data.pagination?.hasMore || false);
-    setPage(pg);
+
+    // ─── Memory Cleanup: processedReadIdsRef ───
+    if (processedReadIdsRef.current.size > 1000) {
+      // Clear oldest half if it grows too large
+      const arr = Array.from(processedReadIdsRef.current);
+      processedReadIdsRef.current = new Set(arr.slice(500));
+    }
    }
   } catch (err) { console.log(err); }
-  finally { setLoading(false); setLoadingMore(false); }
+  finally { 
+    if (version === requestVersionRef.current) {
+      isFetchingRef.current = false;
+      setLoading(false); 
+      setLoadingMore(false); 
+    }
+  }
  };
 
  useEffect(() => { if (senderId && receiverId) fetchMessages(); }, [senderId, receiverId]);
+
+ // ─── Handle AppState to refresh chat on foreground ───
+ useEffect(() => {
+  const subscription = AppState.addEventListener("change", nextAppState => {
+   if (nextAppState === "active" && senderId && receiverId) {
+    // Incremental sync: only fetch messages newer than our newest message
+    setMessages(prev => {
+      const newestMsg = prev[0];
+      if (newestMsg && newestMsg.createdAt) {
+        fetchMessages(1, false, newestMsg.createdAt);
+      } else {
+        fetchMessages(1, false);
+      }
+      return prev;
+    });
+   }
+  });
+  return () => { subscription.remove(); };
+ }, [senderId, receiverId]);
+
+ // ─── Realtime Message Batching ───
+ const flushIncomingBuffer = useCallback(() => {
+   if (incomingBufferRef.current.length === 0) return;
+   const batch = [...incomingBufferRef.current];
+   incomingBufferRef.current = [];
+   
+   setMessages(prev => mergeMessages(prev, batch));
+   
+   if (socket) {
+     const unreadIds = batch
+       .filter(msg => msg.senderId === receiverId && !processedReadIdsRef.current.has(msg._id))
+       .map(msg => {
+          processedReadIdsRef.current.add(msg._id);
+          return msg._id;
+       });
+     if (unreadIds.length > 0) {
+       socket.emit("message_read", { messageIds: unreadIds, senderId: receiverId });
+     }
+   }
+   batchTimerRef.current = null;
+ }, [socket, receiverId]);
 
  // ─── Register socket handlers ───
  useEffect(() => {
   registerMessageHandler((msg) => {
    if (msg.senderId === receiverId) {
-    // Dedup: prevent duplicate messages
-    setMessages(prev => {
-     if (prev.some(m => m._id === msg._id)) return prev;
-     return [msg, ...prev];
-    });
-    // Mark as read immediately since we're viewing this chat
-    if (socket) {
-     socket.emit("message_read", { messageIds: [msg._id], senderId: msg.senderId });
+    incomingBufferRef.current.push(msg);
+    if (!batchTimerRef.current) {
+      batchTimerRef.current = setTimeout(flushIncomingBuffer, 100);
     }
    }
   });
-  registerStatusHandler((msgId, status) => {
-   setMessages(prev => prev.map(m => m._id === msgId ? { ...m, status } : m));
+
+  registerStatusHandler((msgIdOrIds, status) => {
+   const ids = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
+   setMessages(prev => prev.map(m => ids.includes(m._id) ? { ...m, status } : m));
   });
+
   registerDeleteHandler((msgId, forEveryone) => {
    if (forEveryone) {
     setMessages(prev => prev.map(m => m._id === msgId ? { ...m, isDeleted: true, message: "This message was deleted" } : m));
@@ -203,11 +448,19 @@ export default function ChatUser({ route, navigation }) {
     setMessages(prev => prev.filter(m => m._id !== msgId));
    }
   });
+
   registerReadHandler((msgIds, status) => {
    setMessages(prev => prev.map(m => msgIds.includes(m._id) ? { ...m, status } : m));
   });
-  return () => { unregisterMessageHandler(); unregisterStatusHandler(); unregisterDeleteHandler(); unregisterReadHandler(); };
- }, [receiverId, socket]);
+
+  return () => { 
+    unregisterMessageHandler(); 
+    unregisterStatusHandler(); 
+    unregisterDeleteHandler(); 
+    unregisterReadHandler(); 
+    if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
+  };
+ }, [receiverId, socket, flushIncomingBuffer]);
 
  // ─── Profile update handler (real-time) ───
  useEffect(() => {
@@ -372,36 +625,7 @@ export default function ChatUser({ route, navigation }) {
   }
  };
 
- const formatDuration = (sec) => {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s < 10 ? "0" : ""}${s}`;
- };
 
- const playSound = (messageId, url) => {
-  if (audioPlayer.messageId === messageId) {
-   if (!audioPlayer.isPlaying && audioPlayer.progress >= audioPlayer.duration - 100) {
-    videoRef.current?.setPositionAsync(0);
-   }
-   setAudioPlayer(prev => ({
-    ...prev,
-    isPlaying: !prev.isPlaying
-   }));
-   return;
-  }
-
-  setAudioPlayer({
-   messageId,
-   url,
-   isPlaying: true,
-   progress: 0,
-   duration: 1
-  });
- };
-
- useEffect(() => {
-  return () => { if (currentlyPlaying) currentlyPlaying.sound.unloadAsync(); };
- }, [currentlyPlaying]);
 
  const callbacksRef = useRef({});
  const panResponder = useRef(
@@ -450,27 +674,33 @@ export default function ChatUser({ route, navigation }) {
   };
  }, []);
 
- // ─── Mark existing unread messages as read on open ───
- // Run only once when we have senderId + initial messages loaded
- const hasMarkedRead = useRef(false);
- const markReadTimeoutRef = useRef(null);
- useEffect(() => {
-  // Only mark read once per chat session, and only after initial messages load
-  if (senderId && messages.length > 0 && socket && !hasMarkedRead.current && !loading) {
-   hasMarkedRead.current = true;
-   // Small delay to batch — prevents rapid-fire on mount
-   markReadTimeoutRef.current = setTimeout(() => {
-    const unreadIds = messages
-     .filter(m => m.senderId === receiverId && m.status !== "read")
-     .map(m => m._id);
-    if (unreadIds.length > 0) {
-     socket.emit("message_read", { messageIds: unreadIds, senderId: receiverId });
-     setMessages(prev => prev.map(m => unreadIds.includes(m._id) ? { ...m, status: "read" } : m));
-    }
-   }, 300);
+ // ─── Mark visible messages as read (With Spam Protection) ───
+ const markVisibleAsRead = useCallback((viewableItems) => {
+  if (!socket || !senderId) return;
+  
+  const unreadIds = viewableItems
+   .filter(({ item }) => {
+     return item.senderId === receiverId && 
+            item.status !== "read" && 
+            !processedReadIdsRef.current.has(item._id);
+   })
+   .map(({ item }) => item._id);
+
+  if (unreadIds.length > 0) {
+   unreadIds.forEach(id => processedReadIdsRef.current.add(id));
+   socket.emit("message_read", { messageIds: unreadIds, senderId: receiverId });
+   setMessages(prev => prev.map(m => unreadIds.includes(m._id) ? { ...m, status: "read" } : m));
   }
-  return () => { if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current); };
- }, [senderId, loading, socket]);
+ }, [socket, senderId, receiverId]);
+
+ const onViewableItemsChanged = useRef(({ viewableItems }) => {
+  markVisibleAsRead(viewableItems);
+ }).current;
+
+ const viewabilityConfig = useRef({
+  itemVisiblePercentThreshold: 50,
+  minimumViewTime: 300,
+ }).current;
 
  // ─── Typing emit with debounce ───
  const handleTextChange = (val) => {
@@ -490,32 +720,62 @@ export default function ChatUser({ route, navigation }) {
   }, 2000);
  };
 
- // ─── Send message ───
- const sendMessage = async () => {
-  const currentText = textRef.current || text;
-  if (!senderId || !currentText.trim()) return;
-  const msg = currentText.trim();
-  setText("");
-  textRef.current = "";
-  // Stop typing
-  if (isTypingRef.current && socket) {
-   isTypingRef.current = false;
-   socket.emit("typing_stop", { senderId, receiverId });
+ const hasText = text.trim().length > 0;
+
+ // ─── Send message (Optimistic) ───
+ const sendMessage = async (customContent = null, retryId = null) => {
+  const currentText = customContent || textRef.current || text;
+  if (!senderId || (!currentText.trim() && !retryId)) return;
+  const msgText = currentText.trim();
+  
+  if (!retryId) {
+    setText("");
+    textRef.current = "";
+    if (isTypingRef.current && socket) {
+     isTypingRef.current = false;
+     socket.emit("typing_stop", { senderId, receiverId });
+    }
+    clearTimeout(typingTimerRef.current);
   }
-  clearTimeout(typingTimerRef.current);
+
+  const tempId = retryId || `temp_${Date.now()}`;
+  const optimisticMsg = {
+   _id: tempId,
+   clientId: tempId,
+   senderId,
+   receiverId,
+   message: msgText,
+   status: "pending",
+   createdAt: new Date().toISOString(),
+   messageType: "text",
+   isDeleted: false,
+   ...(replyMsg && { replyTo: replyMsg })
+  };
+
+  if (!retryId) {
+    setMessages(prev => mergeMessages(prev, [optimisticMsg]));
+    setReplyMsg(null);
+  } else {
+    setMessages(prev => prev.map(m => (m.clientId === tempId || m._id === tempId) ? { ...m, status: "pending" } : m));
+  }
 
   try {
-   setSending(true);
-   const payload = { senderId, receiverId, message: msg };
-   if (replyMsg) payload.replyTo = replyMsg._id;
+   const payload = { senderId, receiverId, message: msgText, clientId: tempId };
+   if (optimisticMsg.replyTo) payload.replyTo = optimisticMsg.replyTo._id;
+   
    const { data } = await axios.post(`${API}/send-message`, payload);
-   if (data.success && data.data) {
-    setMessages(prev => [data.data, ...prev]);
-    addMessageToCache(senderId, receiverId, data.data);
-    setReplyMsg(null);
+   if (data.success) {
+    setMessages(prev => prev.map(m => m.clientId === tempId ? data.data : m));
+    syncMessageToCache(senderId, receiverId, data.data);
    }
-  } catch (err) { setText(msg); textRef.current = msg; }
-  finally { setSending(false); }
+  } catch (err) {
+   console.log("Send failed:", err.message);
+   setMessages(prev => prev.map(m => (m.clientId === tempId) ? { ...m, status: "failed" } : m));
+  }
+ };
+
+ const retryMessage = (item) => {
+   sendMessage(item.message, item.clientId || item._id);
  };
 
  // ─── Load older messages ───
@@ -525,11 +785,11 @@ export default function ChatUser({ route, navigation }) {
  };
 
  // ─── Action modal ───
- const openActionModal = (msg) => {
+ const openActionModal = useCallback((msg) => {
   Vibration.vibrate(50);
   setSelectedMsg(msg);
   Animated.timing(actionAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
- };
+ }, [actionAnim]);
  const closeActionModal = () => {
   Animated.timing(actionAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setSelectedMsg(null));
  };
@@ -569,139 +829,7 @@ export default function ChatUser({ route, navigation }) {
   }, 300);
  };
 
- const formatTime = (date) => {
-  if (!date) return "";
-  return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
- };
 
- // ─── Status ticks component ───
- const StatusTicks = ({ status }) => {
-  if (status === "read") return <Ionicons name="checkmark-done" size={16} color="#53bdeb" />;
-  if (status === "delivered") return <Ionicons name="checkmark-done" size={16} color="rgba(255,255,255,0.6)" />;
-  return <Ionicons name="checkmark" size={16} color="rgba(255,255,255,0.6)" />;
- };
-
- const hasText = text.trim().length > 0;
-
- // ─── Message Bubble ───
- const MessageBubble = useCallback(({ item }) => {
-  const isMe = item.senderId === senderId;
-  const deleted = item.isDeleted;
-  const isMedia = item.messageType && item.messageType !== "text";
-
-  return (
-   <TouchableOpacity
-    style={[s.bubbleWrap, isMe ? s.bubbleRight : s.bubbleLeft]}
-    onLongPress={() => !deleted && openActionModal(item)}
-    onPress={() => {
-     if (isMedia && !deleted) {
-      if (item.messageType === "image" || item.messageType === "video") {
-       setMediaViewer({ type: item.messageType, url: item.mediaUrl, caption: item.message });
-      } else if (item.messageType === "voice") {
-       playSound(item._id, item.mediaUrl);
-      }
-     }
-    }}
-    activeOpacity={0.8}
-    disabled={deleted && !isMedia}
-   >
-    {/* Reply reference */}
-    {item.replyToMessage && !deleted && (
-     <View style={[s.replyRef, { backgroundColor: isMe ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)", borderLeftColor: isMe ? "#53bdeb" : "#25D366" }]}>
-      <Text style={[s.replyRefName, { color: isMe ? "#53bdeb" : "#25D366" }]}>
-       {item.replyToMessage.senderId === senderId ? "You" : displayName}
-      </Text>
-      <Text style={[s.replyRefTxt, { color: isMe ? "rgba(255,255,255,0.7)" : textSub }]} numberOfLines={1}>
-       {item.replyToMessage.isDeleted ? "This message was deleted" : item.replyToMessage.message}
-      </Text>
-     </View>
-    )}
-
-    <View style={[
-     s.bubble,
-     isMe ? { backgroundColor: myBubble, borderBottomRightRadius: 4 } : { backgroundColor: otherBubble, borderBottomLeftRadius: 4 },
-     isMedia && { padding: 4, borderRadius: 12 }
-    ]}>
-     {deleted ? (
-      <Text style={[s.deletedTxt, { color: isMe ? "rgba(255,255,255,0.5)" : textSub }, { paddingHorizontal: 10, paddingVertical: 4 }]}>
-       🚫 This message was deleted
-      </Text>
-     ) : (
-      <>
-       {item.messageType === "image" && (
-        <View style={s.mediaContainer}>
-         <Image source={{ uri: item.mediaUrl }} style={s.bubbleImage} />
-        </View>
-       )}
-       {item.messageType === "video" && (
-        <View style={s.mediaContainer}>
-         <Image source={{ uri: item.mediaThumbnail || item.mediaUrl }} style={s.bubbleImage} />
-         <View style={s.playOverlay}>
-          <Ionicons name="play" size={32} color="#fff" />
-         </View>
-        </View>
-       )}
-       {item.messageType === "voice" && (
-        <View style={s.voiceBubble}>
-         <View>
-          <Ionicons name={audioPlayer.messageId === item._id && audioPlayer.isPlaying ? "pause" : "play"}
-           size={28} color={isMe ? "#fff" : accentPurple}
-          />
-         </View>
-         <View style={s.voiceWaveform}>
-          <TouchableOpacity
-           activeOpacity={1}
-           onPress={(e) => {
-            if (audioPlayer.messageId !== item._id) return;
-
-            const { locationX } = e.nativeEvent;
-            const percent = locationX / e.nativeEvent.target.layout?.width || 200;
-
-            const newPosition = percent * audioPlayer.duration;
-
-            videoRef.current?.setPositionAsync(newPosition);
-           }}
-           style={{ width: "100%" }}
-          >
-           <View style={[s.voiceBar, { backgroundColor: isMe ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)", width: "100%" }]}
-           >
-            <View
-             style={[
-              s.voiceProgress,
-              {
-               backgroundColor: isMe ? "#fff" : accentPurple,
-               width:
-                audioPlayer.messageId === item._id
-                 ? `${(audioPlayer.progress / audioPlayer.duration) * 100}%`
-                 : "0%"
-              }
-             ]}
-            />
-           </View>
-          </TouchableOpacity>
-         </View>
-         <Text style={[s.voiceDuration, { color: isMe ? "#fff" : textSub }]}>
-          {formatDuration(item.mediaDuration || 0)}
-         </Text>
-        </View>
-       )}
-
-       {item.message ? (
-        <Text style={[s.bubbleTxt, isMe ? { color: myBubbleTxt } : { color: otherBubbleTxt }, isMedia && { paddingHorizontal: 8, paddingVertical: 4 }]}>
-         {item.message}
-        </Text>
-       ) : null}
-      </>
-     )}
-
-     <View style={[s.metaRow, isMedia && { paddingHorizontal: 8, paddingBottom: 4 }]}>
-      <Text style={[s.timeTxt, { color: isMe ? "rgba(255,255,255,0.5)" : "#aaa" }]}>{formatTime(item.createdAt)}</Text>
-      {isMe && !deleted && <View style={{ marginLeft: 4 }}><StatusTicks status={item.status} /></View>}
-     </View>
-    </View>
-   </TouchableOpacity>
-  );
- }, [senderId, myBubble, otherBubble, myBubbleTxt, otherBubbleTxt, textSub, displayName, audioPlayer]);
 
  // ─── Typing dots indicator ───
  const TypingBubble = () => (
@@ -798,9 +926,26 @@ export default function ChatUser({ route, navigation }) {
       <FlatList
        ref={flatRef}
        data={messages}
-       extraData={audioPlayer}
-       keyExtractor={(item) => item._id}
-       renderItem={({ item }) => <MessageBubble item={item} />}
+       keyExtractor={(item) => item._id || item.clientId}
+               renderItem={({ item }) => (
+         <MessageBubble 
+          item={item} 
+          senderId={senderId} 
+          displayName={displayName}
+          myBubble={myBubble}
+          otherBubble={otherBubble}
+          myBubbleTxt={myBubbleTxt}
+          otherBubbleTxt={otherBubbleTxt}
+          accentPurple={accentPurple}
+          textSub={textSub}
+          onLongPress={openActionModal}
+          onPressMedia={(m) => {
+            if (m.messageType === "image" || m.messageType === "video") {
+              setMediaViewer({ type: m.messageType, url: m.mediaUrl, caption: m.message });
+            }
+          }}
+         />
+        )}
        contentContainerStyle={s.msgList}
        showsVerticalScrollIndicator={false}
        keyboardDismissMode="on-drag"
@@ -811,6 +956,8 @@ export default function ChatUser({ route, navigation }) {
        }}
        onEndReachedThreshold={0.5}
        scrollEventThrottle={400}
+       onViewableItemsChanged={onViewableItemsChanged}
+       viewabilityConfig={viewabilityConfig}
        ListHeaderComponent={
         <View>
          {isReceiverTyping && <TypingBubble />}
@@ -1004,29 +1151,6 @@ export default function ChatUser({ route, navigation }) {
      </Animated.View>
     </Pressable>
    </Modal>
-   {audioPlayer.url && (
-    <Video
-     ref={videoRef}
-     key={audioPlayer.messageId}
-     source={{ uri: audioPlayer.url }}
-     shouldPlay={audioPlayer.isPlaying}
-     useNativeControls={false}
-     volume={1.0}
-     isMuted={false}
-     style={{ width: 0, height: 0 }}
-
-     onPlaybackStatusUpdate={(status) => {
-      if (!status.isLoaded) return;
-
-      setAudioPlayer(prev => ({
-       ...prev,
-       progress: status.positionMillis,
-       duration: status.durationMillis || 1,
-       isPlaying: status.isPlaying
-      }));
-     }}
-    />
-   )}
   </View>
  );
 }

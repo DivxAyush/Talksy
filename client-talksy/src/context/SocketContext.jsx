@@ -19,6 +19,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const appStateRef = useRef(AppState.currentState);
     const isConnectingRef = useRef(false);
     const userIdRef = useRef(null);
+    const typingTimeoutsRef = useRef({});
 
     const {
         updateConversationWithMessage,
@@ -27,6 +28,13 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         fetchConversations,
         getCurrentChat
     } = useContext(ChatContext);
+
+    // ─── Cleanup all typing timeouts on unmount ───
+    useEffect(() => {
+        return () => {
+            Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+        };
+    }, []);
 
     // ─── Handler refs for screens to register callbacks ───
     const messageHandlerRef = useRef(null);
@@ -76,107 +84,110 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         profileUpdateHandlerRef.current = null;
     }, []);
 
+    // ─── Scoped app-event cleanup helper ───
+    const cleanupSocketListeners = useCallback((sock) => {
+        if (!sock) return;
+        const appEvents = [
+            "getOnlineUsers", "newMessage", "message_status_update", 
+            "bulk_message_status_update", "messages_read", "message_deleted", 
+            "profile_updated", "typing_start", "typing_stop",
+            "connect", "disconnect", "connect_error"
+        ];
+        appEvents.forEach(ev => sock.off(ev));
+        // Also cleanup engine-level listeners we might have touched
+        if (sock.io) {
+            sock.io.off("reconnect");
+        }
+    }, []);
+
     // ─── Centralized event registration (prevents duplicate listeners) ───
     const registerSocketEvents = useCallback((sock) => {
-        // Remove ALL previous listeners before re-registering (prevents duplicates)
-        sock.removeAllListeners("getOnlineUsers");
-        sock.removeAllListeners("newMessage");
-        sock.removeAllListeners("message_status_update");
-        sock.removeAllListeners("messages_read");
-        sock.removeAllListeners("message_deleted");
-        sock.removeAllListeners("profile_updated");
-        sock.removeAllListeners("typing_start");
-        sock.removeAllListeners("typing_stop");
+        // Safe Cleanup: Only remove listeners we own
+        cleanupSocketListeners(sock);
 
-        // ─── Online Users ───
         sock.on("getOnlineUsers", (users) => {
             setOnlineUsers(users);
         });
 
-        // ─── New Message ───
         sock.on("newMessage", async (message) => {
             console.log("[Socket] newMessage received:", message._id);
-            
-            // Forward to chat screen handler if registered
-            if (messageHandlerRef.current) {
-                messageHandlerRef.current(message);
-            }
-            // Update conversations list
+            if (messageHandlerRef.current) messageHandlerRef.current(message);
             updateConversationWithMessage(message);
 
-            // 📲 Show local notification if NOT viewing sender's chat
             const currentChat = getCurrentChat();
-            if (message.senderId !== currentChat) {
+            // Use stable ref for AppState to avoid stale checks during race conditions
+            const isAppBackgrounded = appStateRef.current.match(/inactive|background/);
+            
+            if (message.senderId !== currentChat || isAppBackgrounded) {
                 try {
                     const senderName = message.senderName || "New Message";
                     await showLocalNotification(
                         senderName,
                         message.message || "Sent you a message",
-                        {
-                            type: "new_message",
-                            senderId: message.senderId,
-                        }
+                        { type: "new_message", senderId: message.senderId }
                     );
                 } catch (err) {
-                    console.log("[Socket] Local notification error:", err);
+                    console.log("[Socket] Notification error:", err);
                 }
             }
         });
 
-        // ─── Message Status Update (sent → delivered) ───
         sock.on("message_status_update", ({ messageId, status }) => {
-            if (statusHandlerRef.current) {
-                statusHandlerRef.current(messageId, status);
-            }
+            if (statusHandlerRef.current) statusHandlerRef.current(messageId, status);
             updateConversationMessageStatus(messageId, status);
         });
 
-        // ─── Messages Read ───
+        sock.on("bulk_message_status_update", ({ messageIds, status }) => {
+            if (statusHandlerRef.current) statusHandlerRef.current(messageIds, status);
+            messageIds.forEach(id => updateConversationMessageStatus(id, status));
+        });
+
         sock.on("messages_read", ({ messageIds, status }) => {
-            if (readHandlerRef.current) {
-                readHandlerRef.current(messageIds, status);
-            }
-            // Update last message status in conversations
-            messageIds.forEach(id => {
-                updateConversationMessageStatus(id, status);
-            });
+            if (readHandlerRef.current) readHandlerRef.current(messageIds, status);
+            messageIds.forEach(id => updateConversationMessageStatus(id, status));
         });
 
-        // ─── Message Deleted ───
         sock.on("message_deleted", ({ messageId, deleteForEveryone }) => {
-            if (deleteHandlerRef.current) {
-                deleteHandlerRef.current(messageId, deleteForEveryone);
-            }
+            if (deleteHandlerRef.current) deleteHandlerRef.current(messageId, deleteForEveryone);
         });
 
-        // ─── Profile Updated (real-time) ───
         sock.on("profile_updated", (data) => {
-            // Update conversations list
             updateUserProfileInConversations(data.userId, {
                 name: data.name,
                 username: data.username,
                 profilePic: data.profilePic,
                 about: data.about,
             });
-            // Forward to chat screen if open
-            if (profileUpdateHandlerRef.current) {
-                profileUpdateHandlerRef.current(data);
-            }
+            if (profileUpdateHandlerRef.current) profileUpdateHandlerRef.current(data);
         });
 
-        // ─── Typing Indicators ───
+        // Safe Typing Indicator with useRef-based TTL (prevents window pollution)
         sock.on("typing_start", ({ senderId }) => {
             setTypingUsers(prev => ({ ...prev, [senderId]: true }));
+            if (typingTimeoutsRef.current[senderId]) clearTimeout(typingTimeoutsRef.current[senderId]);
+            
+            typingTimeoutsRef.current[senderId] = setTimeout(() => {
+                setTypingUsers(prev => {
+                    const next = { ...prev };
+                    delete next[senderId];
+                    return next;
+                });
+                delete typingTimeoutsRef.current[senderId];
+            }, 5000);
         });
 
         sock.on("typing_stop", ({ senderId }) => {
+            if (typingTimeoutsRef.current[senderId]) {
+                clearTimeout(typingTimeoutsRef.current[senderId]);
+                delete typingTimeoutsRef.current[senderId];
+            }
             setTypingUsers(prev => {
                 const next = { ...prev };
                 delete next[senderId];
                 return next;
             });
         });
-    }, [updateConversationWithMessage, updateConversationMessageStatus, updateUserProfileInConversations, fetchConversations, getCurrentChat]);
+    }, [updateConversationWithMessage, updateConversationMessageStatus, updateUserProfileInConversations, fetchConversations, getCurrentChat, cleanupSocketListeners]);
 
     // ─── Handle reconnect recovery ───
     const handleReconnect = useCallback(async () => {
@@ -184,20 +195,18 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         const userId = userIdRef.current;
         if (!userId) return;
 
-        // 1. Re-fetch conversations to get any missed messages
         fetchConversations(true);
 
-        // 2. Mark pending messages as delivered
         try {
-            await axios.post(`${SERVER_URL}/api/messages/mark-delivered`, {
-                userId
-            });
+            await axios.post(`${SERVER_URL}/api/messages/mark-delivered`, { userId });
         } catch (err) {
-            console.log("[Socket] Mark delivered on reconnect error:", err.message);
+            console.log("[Socket] Mark delivered error:", err.message);
         }
 
-        // 3. Clear stale typing indicators (they're definitely wrong after reconnect)
+        // Cleanup indicators on reconnect
         setTypingUsers({});
+        Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
+        typingTimeoutsRef.current = {};
     }, [fetchConversations]);
 
     // ─── Main socket connection lifecycle ───
@@ -206,11 +215,10 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
 
         const connectSocket = async () => {
             if (!isLoggedIn) {
-                // Logged out — cleanup
                 if (socketRef.current) {
                     console.log("[Socket] Logging out — disconnecting");
-                    socketRef.current.removeAllListeners();
-                    socketRef.current.close();
+                    socketRef.current.disconnect();
+                    cleanupSocketListeners(socketRef.current);
                     socketRef.current = null;
                 }
                 setSocket(null);
@@ -219,91 +227,62 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                 return;
             }
 
-            // Prevent double connection attempts
-            if (isConnectingRef.current) {
-                console.log("[Socket] Already connecting, skipping");
-                return;
-            }
+            if (isConnectingRef.current) return;
             isConnectingRef.current = true;
 
             try {
                 const userStr = await AsyncStorage.getItem("user");
-                if (!userStr) {
-                    isConnectingRef.current = false;
-                    return;
-                }
+                const socketToken = await AsyncStorage.getItem("socketToken");
+                if (!userStr) { isConnectingRef.current = false; return; }
 
                 const user = JSON.parse(userStr);
                 userIdRef.current = user._id;
 
-                // If we already have an active connected socket, don't create a new one
                 if (socketRef.current?.connected) {
-                    console.log("[Socket] Already connected, reusing");
                     isConnectingRef.current = false;
                     return;
                 }
 
-                // Close any stale socket before creating new one
                 if (socketRef.current) {
-                    socketRef.current.removeAllListeners();
+                    cleanupSocketListeners(socketRef.current);
                     socketRef.current.close();
-                    socketRef.current = null;
                 }
 
-                console.log("[Socket] Creating new connection for user:", user._id);
+                console.log("[Socket] Connecting user:", user._id);
                 newSocket = io(SERVER_URL, {
                     query: { userId: user._id },
+                    auth: { token: socketToken || "" },
                     transports: ["websocket"],
                     reconnection: true,
                     reconnectionAttempts: Infinity,
-                    reconnectionDelay: 1000,
-                    reconnectionDelayMax: 5000,
-                    timeout: 20000,
                 });
 
                 socketRef.current = newSocket;
                 setSocket(newSocket);
 
-                // ─── Connection lifecycle events ───
                 newSocket.on("connect", () => {
                     console.log("[Socket] Connected:", newSocket.id);
                     isConnectingRef.current = false;
                 });
 
-                // Socket.IO v4: fires after a successful reconnection
-                newSocket.io.on("reconnect", (attemptNumber) => {
-                    console.log("[Socket] Reconnected after", attemptNumber, "attempts");
+                newSocket.io.on("reconnect", (attempt) => {
+                    console.log("[Socket] Reconnected after", attempt, "attempts");
                     handleReconnect();
                 });
 
                 newSocket.on("disconnect", (reason) => {
                     console.log("[Socket] Disconnected:", reason);
-                    // If server kicked us, don't auto-reconnect
-                    if (reason === "io server disconnect") {
-                        console.log("[Socket] Server disconnected us, attempting manual reconnect...");
-                        newSocket.connect();
-                    }
+                    if (reason === "io server disconnect") newSocket.connect();
                 });
 
-                newSocket.on("connect_error", (error) => {
-                    console.log("[Socket] Connection error:", error.message);
+                newSocket.on("connect_error", (err) => {
+                    console.log("[Socket] Connection error:", err.message);
                     isConnectingRef.current = false;
                 });
 
-                // Register all event handlers
                 registerSocketEvents(newSocket);
-
-                // ─── Mark pending messages as delivered on first connect ───
-                try {
-                    await axios.post(`${SERVER_URL}/api/messages/mark-delivered`, {
-                        userId: user._id
-                    });
-                } catch (err) {
-                    console.log("[Socket] Mark delivered error:", err.message);
-                }
-
             } catch (err) {
-                console.log("[Socket] connectSocket error:", err);
+                console.log("[Socket] Connection failed:", err);
             } finally {
                 isConnectingRef.current = false;
             }
@@ -313,14 +292,12 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
 
         return () => {
             if (newSocket) {
-                console.log("[Socket] Cleanup — removing listeners & closing");
-                newSocket.removeAllListeners();
-                newSocket.io.removeAllListeners();
+                cleanupSocketListeners(newSocket);
                 newSocket.close();
                 socketRef.current = null;
             }
         };
-    }, [isLoggedIn]);
+    }, [isLoggedIn, cleanupSocketListeners]);
 
     // ─── AppState handling: foreground/background lifecycle ───
     useEffect(() => {

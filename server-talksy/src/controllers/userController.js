@@ -1,5 +1,6 @@
 import MastUser from "../models/userModel.js";
 import bcrypt from "bcrypt";
+import { generateSocketToken } from "../socket/socket.js";
 
 export const registerUser = async (request, reply) => {
  try {
@@ -52,7 +53,8 @@ export const registerUser = async (request, reply) => {
     mobile: user.mobile,
     name: user.name,
     about: user.about
-   }
+   },
+   socketToken: generateSocketToken(user._id.toString())
   };
 
  } catch (error) {
@@ -114,7 +116,8 @@ export const loginUser = async (request, reply) => {
     name: user.name,
     about: user.about,
     profilePic: user.profilePic
-   }
+   },
+   socketToken: generateSocketToken(user._id.toString())
   };
 
  } catch (error) {

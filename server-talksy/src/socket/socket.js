@@ -1,9 +1,19 @@
 import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
 import UserMessage from "../models/userMessage.js";
 
-let io;
-const userSocketMap = {}; // { userId: socketId }
+// ─── Constants ───
+const JWT_SECRET = process.env.JWT_SECRET || "talksy_socket_secret_2026";
+const TYPING_TTL_MS = 5000; // Auto-clear typing after 5s of no refresh
 
+let io;
+const userSocketMap = {};    // { userId: socketId }
+const typingTimers = {};     // { `${senderId}_${receiverId}`: timeoutId }
+const processedReads = {};   // { `${senderId}_${batchKey}`: timestamp } — dedup read events
+
+// ════════════════════════════════════════════════════════════
+// ─── SOCKET INITIALIZATION ───
+// ════════════════════════════════════════════════════════════
 export const initSocket = (server) => {
  io = new Server(server, {
   cors: {
@@ -14,90 +24,135 @@ export const initSocket = (server) => {
   pingTimeout: 60000
  });
 
+ // ─── JWT Authentication Middleware ───
+ io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  const userId = socket.handshake.query?.userId;
+
+  // Strategy: If JWT token is provided, verify it (secure path)
+  // If only userId is provided, allow it (backward compatibility)
+  // This allows gradual migration without breaking existing clients
+  if (token) {
+   try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    socket.userId = decoded.userId;
+    return next();
+   } catch (err) {
+    console.log(`[Auth] Invalid JWT from socket ${socket.id}:`, err.message);
+    return next(new Error("Authentication failed: Invalid token"));
+   }
+  }
+
+  // Fallback: query-based userId (backward compatible)
+  if (userId && userId !== "undefined") {
+   socket.userId = userId;
+   return next();
+  }
+
+  return next(new Error("Authentication failed: No credentials provided"));
+ });
+
+ // ════════════════════════════════════════════════════════════
+ // ─── CONNECTION HANDLER ───
+ // ════════════════════════════════════════════════════════════
  io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  const userId = socket.userId;
+  console.log(`[Socket] Connected: ${socket.id} | User: ${userId}`);
 
-  const userId = socket.handshake.query.userId;
-  if (userId && userId !== "undefined") {
-   // If this user already has an active socket, clean up the old one
-   const existingSocketId = userSocketMap[userId];
-   if (existingSocketId && existingSocketId !== socket.id) {
-    console.log(`[Socket] User ${userId} reconnected: old=${existingSocketId} new=${socket.id}`);
-    // Force disconnect old socket if still alive
-    const oldSocket = io.sockets.sockets.get(existingSocketId);
-    if (oldSocket) {
-     oldSocket.disconnect(true);
-    }
-   }
-   userSocketMap[userId] = socket.id;
-  }
+  // ─── Register user in socket map (with stale socket cleanup) ───
+  registerUserSocket(userId, socket.id);
 
-  // Broadcast updated online users list
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  // ─── Broadcast updated online users ───
+  broadcastOnlineUsers();
 
-  // ─── Deliver pending messages when user comes online ───
-  if (userId && userId !== "undefined") {
-   deliverPendingMessages(userId);
-  }
+  // ─── Deliver pending messages (batched) ───
+  deliverPendingMessages(userId);
 
-  // ─── Typing Indicators ───
+  // ════════════════════════════════════════
+  // ─── TYPING EVENTS (with throttle + TTL) ───
+  // ════════════════════════════════════════
   socket.on("typing_start", ({ senderId, receiverId }) => {
-   const receiverSocketId = userSocketMap[receiverId];
-   if (receiverSocketId) {
-    io.to(receiverSocketId).emit("typing_start", { senderId });
-   }
+   // Validate: sender must be the authenticated user
+   if (senderId !== userId) return;
+
+   const timerKey = `${senderId}_${receiverId}`;
+
+   // Forward to receiver
+   emitToUser(receiverId, "typing_start", { senderId });
+
+   // Auto-clear typing after TTL (prevents ghost indicators if client crashes)
+   clearTimeout(typingTimers[timerKey]);
+   typingTimers[timerKey] = setTimeout(() => {
+    emitToUser(receiverId, "typing_stop", { senderId });
+    delete typingTimers[timerKey];
+   }, TYPING_TTL_MS);
   });
 
   socket.on("typing_stop", ({ senderId, receiverId }) => {
-   const receiverSocketId = userSocketMap[receiverId];
-   if (receiverSocketId) {
-    io.to(receiverSocketId).emit("typing_stop", { senderId });
-   }
+   if (senderId !== userId) return;
+
+   const timerKey = `${senderId}_${receiverId}`;
+   clearTimeout(typingTimers[timerKey]);
+   delete typingTimers[timerKey];
+
+   emitToUser(receiverId, "typing_stop", { senderId });
   });
 
-  // ─── Message Delivered Acknowledgement ───
+  // ════════════════════════════════════════
+  // ─── MESSAGE DELIVERY ACKNOWLEDGEMENT ───
+  // ════════════════════════════════════════
   socket.on("message_delivered", async ({ messageId, senderId }) => {
    try {
-    await UserMessage.findByIdAndUpdate(messageId, { status: "delivered" });
-    // Notify the original sender that their message was delivered
-    const senderSocketId = userSocketMap[senderId];
-    if (senderSocketId) {
-     io.to(senderSocketId).emit("message_status_update", {
-      messageId,
-      status: "delivered"
-     });
+    const result = await UserMessage.updateOne(
+     { _id: messageId, status: "sent" },  // Only update if still "sent" (prevents double-update)
+     { status: "delivered" }
+    );
+
+    // Only notify sender if we actually changed something
+    if (result.modifiedCount > 0) {
+     emitToUser(senderId, "message_status_update", { messageId, status: "delivered" });
     }
    } catch (err) {
-    console.error("Error updating delivery status:", err.message);
+    console.error("[Socket] Delivery ack error:", err.message);
    }
   });
 
-  // ─── Message Read Acknowledgement ───
+  // ════════════════════════════════════════
+  // ─── MESSAGE READ ACKNOWLEDGEMENT (with dedup) ───
+  // ════════════════════════════════════════
   socket.on("message_read", async ({ messageIds, senderId }) => {
    try {
     if (!messageIds || messageIds.length === 0) return;
 
-    // Bulk update all messages to "read"
-    await UserMessage.updateMany(
+    // Dedup: prevent repeated read emissions for same batch
+    const batchKey = messageIds.sort().join(",").slice(0, 64); // first 64 chars as key
+    const dedupKey = `${userId}_${batchKey}`;
+    const now = Date.now();
+
+    if (processedReads[dedupKey] && (now - processedReads[dedupKey]) < 5000) {
+     return; // Same batch processed within last 5 seconds — skip
+    }
+    processedReads[dedupKey] = now;
+
+    // Bulk update — only messages not already "read"
+    const result = await UserMessage.updateMany(
      { _id: { $in: messageIds }, status: { $ne: "read" } },
      { status: "read" }
     );
 
-    // Notify sender that their messages were read
-    const senderSocketId = userSocketMap[senderId];
-    if (senderSocketId) {
-     io.to(senderSocketId).emit("messages_read", {
-      messageIds,
-      status: "read"
-     });
+    // Only emit if we actually changed something
+    if (result.modifiedCount > 0) {
+     emitToUser(senderId, "messages_read", { messageIds, status: "read" });
     }
    } catch (err) {
-    console.error("Error updating read status:", err.message);
+    console.error("[Socket] Read ack error:", err.message);
    }
   });
 
-  // ─── Message Deleted ───
-  socket.on("delete_message", async ({ messageId, userId, deleteForEveryone }) => {
+  // ════════════════════════════════════════
+  // ─── MESSAGE DELETION ───
+  // ════════════════════════════════════════
+  socket.on("delete_message", async ({ messageId, userId: requestUserId, deleteForEveryone }) => {
    try {
     if (deleteForEveryone) {
      // Soft-delete for everyone
@@ -106,39 +161,34 @@ export const initSocket = (server) => {
       message: "This message was deleted"
      });
 
-     // Find the message to notify the other party
-     const msg = await UserMessage.findById(messageId);
+     // Find the other party and notify
+     const msg = await UserMessage.findById(messageId).lean();
      if (msg) {
-      const otherUserId = msg.senderId.toString() === userId
+      const otherUserId = msg.senderId.toString() === requestUserId
        ? msg.receiverId.toString()
        : msg.senderId.toString();
 
-      const otherSocketId = userSocketMap[otherUserId];
-      if (otherSocketId) {
-       io.to(otherSocketId).emit("message_deleted", {
-        messageId,
-        deleteForEveryone: true
-       });
-      }
+      emitToUser(otherUserId, "message_deleted", { messageId, deleteForEveryone: true });
      }
 
      // Confirm to the deleter
      socket.emit("message_deleted", { messageId, deleteForEveryone: true });
     } else {
-     // Delete for me only — add userId to deletedFor array
+     // Delete for me only
      await UserMessage.findByIdAndUpdate(messageId, {
-      $addToSet: { deletedFor: userId }
+      $addToSet: { deletedFor: requestUserId }
      });
      socket.emit("message_deleted", { messageId, deleteForEveryone: false });
     }
    } catch (err) {
-    console.error("Error deleting message:", err.message);
+    console.error("[Socket] Delete error:", err.message);
    }
   });
 
-  // ─── Profile Updated (broadcast to all users) ───
+  // ════════════════════════════════════════
+  // ─── PROFILE UPDATE (broadcast) ───
+  // ════════════════════════════════════════
   socket.on("profile_updated", (profileData) => {
-   // Broadcast to all OTHER connected sockets
    socket.broadcast.emit("profile_updated", {
     userId: profileData.userId || userId,
     name: profileData.name,
@@ -148,99 +198,149 @@ export const initSocket = (server) => {
    });
   });
 
-  // ─── WebRTC Signaling ───
-  socket.on("call_user", (data) => {
-   const receiverSocketId = userSocketMap[data.userToCall];
-   if (receiverSocketId) {
-    io.to(receiverSocketId).emit("call_user", { 
-     signal: data.signalData, 
-     from: data.from, 
-     isVideo: data.isVideo, 
-     callerName: data.callerName, 
-     callerPic: data.callerPic 
-    });
-   }
-  });
 
-  socket.on("answer_call", (data) => {
-   const callerSocketId = userSocketMap[data.to];
-   if (callerSocketId) {
-    io.to(callerSocketId).emit("call_accepted", data.signal);
-   }
-  });
 
-  socket.on("ice_candidate", (data) => {
-   const receiverSocketId = userSocketMap[data.to];
-   if (receiverSocketId) {
-    io.to(receiverSocketId).emit("ice_candidate", data.candidate);
-   }
-  });
-
-  socket.on("end_call", (data) => {
-   const receiverSocketId = userSocketMap[data.to];
-   if (receiverSocketId) {
-    io.to(receiverSocketId).emit("call_ended");
-   }
-  });
-
-  // ─── Disconnect ───
+  // ════════════════════════════════════════
+  // ─── DISCONNECT ───
+  // ════════════════════════════════════════
   socket.on("disconnect", (reason) => {
-   console.log(`[Socket] User disconnected: ${socket.id} reason: ${reason}`);
+   console.log(`[Socket] Disconnected: ${socket.id} | User: ${userId} | Reason: ${reason}`);
+
    if (userId) {
-    // Only delete if this socket is STILL the active one for this user
-    // This prevents a late-disconnecting old socket from removing a new connection
+    // Only remove if this socket is still the active one (prevents race condition)
     if (userSocketMap[userId] === socket.id) {
      delete userSocketMap[userId];
-     io.emit("getOnlineUsers", Object.keys(userSocketMap));
-    } else {
-     console.log(`[Socket] Skipping cleanup for ${userId} — already replaced by ${userSocketMap[userId]}`);
+     broadcastOnlineUsers();
     }
+
+    // Cleanup any active typing timers for this user
+    cleanupTypingTimers(userId);
    }
   });
  });
+
+ // ─── Periodic cleanup of stale dedup entries (every 60s) ───
+ setInterval(() => {
+  const now = Date.now();
+  for (const key in processedReads) {
+   if (now - processedReads[key] > 30000) {
+    delete processedReads[key];
+   }
+  }
+ }, 60000);
 };
 
-// Deliver pending "sent" messages when receiver comes online
+// ════════════════════════════════════════════════════════════
+// ─── HELPER FUNCTIONS ───
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Register a user's socket. If user already has an active socket,
+ * force-disconnect the old one to prevent ghost connections.
+ */
+function registerUserSocket(userId, socketId) {
+ const existingSocketId = userSocketMap[userId];
+ if (existingSocketId && existingSocketId !== socketId) {
+  console.log(`[Socket] Replacing stale socket for ${userId}: ${existingSocketId} → ${socketId}`);
+  const oldSocket = io.sockets.sockets.get(existingSocketId);
+  if (oldSocket) {
+   oldSocket.disconnect(true);
+  }
+ }
+ userSocketMap[userId] = socketId;
+}
+
+/**
+ * Emit an event to a specific user (if online).
+ * Returns true if the user was online and event was sent.
+ */
+function emitToUser(userId, event, data) {
+ const socketId = userSocketMap[userId];
+ if (socketId) {
+  io.to(socketId).emit(event, data);
+  return true;
+ }
+ return false;
+}
+
+/**
+ * Broadcast updated online users list to all connected clients.
+ */
+function broadcastOnlineUsers() {
+ io.emit("getOnlineUsers", Object.keys(userSocketMap));
+}
+
+/**
+ * Cleanup all typing timers associated with a user (on disconnect).
+ * Prevents ghost "Typing..." indicators.
+ */
+function cleanupTypingTimers(userId) {
+ for (const key in typingTimers) {
+  if (key.startsWith(`${userId}_`)) {
+   // This user was typing to someone — notify them to stop
+   const receiverId = key.split("_")[1];
+   emitToUser(receiverId, "typing_stop", { senderId: userId });
+   clearTimeout(typingTimers[key]);
+   delete typingTimers[key];
+  }
+ }
+}
+
+/**
+ * Deliver pending "sent" messages to a user who just came online.
+ * Uses BATCHED emit instead of per-message emit for efficiency.
+ * 500 pending messages → 1 batch emit per sender (not 500 emits).
+ */
 async function deliverPendingMessages(userId) {
  try {
   const pendingMessages = await UserMessage.find({
    receiverId: userId,
    status: "sent",
    isDeleted: false
+  }).lean();
+
+  if (pendingMessages.length === 0) return;
+
+  // Bulk update all to "delivered" in one DB call
+  const messageIds = pendingMessages.map(m => m._id);
+  await UserMessage.updateMany(
+   { _id: { $in: messageIds } },
+   { status: "delivered" }
+  );
+
+  console.log(`[Socket] Delivered ${messageIds.length} pending messages for user ${userId}`);
+
+  // Group by sender, then send ONE batch emit per sender
+  const senderGroups = {};
+  pendingMessages.forEach(msg => {
+   const sid = msg.senderId.toString();
+   if (!senderGroups[sid]) senderGroups[sid] = [];
+   senderGroups[sid].push(msg._id.toString());
   });
 
-  if (pendingMessages.length > 0) {
-   // Update all to delivered
-   const messageIds = pendingMessages.map(m => m._id);
-   await UserMessage.updateMany(
-    { _id: { $in: messageIds } },
-    { status: "delivered" }
-   );
-
-   // Notify each sender about delivery
-   const senderGroups = {};
-   pendingMessages.forEach(msg => {
-    const sid = msg.senderId.toString();
-    if (!senderGroups[sid]) senderGroups[sid] = [];
-    senderGroups[sid].push(msg._id.toString());
+  // Batch emit: each sender gets ONE event with ALL their message IDs
+  Object.entries(senderGroups).forEach(([senderId, msgIds]) => {
+   emitToUser(senderId, "bulk_message_status_update", {
+    messageIds: msgIds,
+    status: "delivered"
    });
-
-   Object.entries(senderGroups).forEach(([senderId, msgIds]) => {
-    const senderSocketId = userSocketMap[senderId];
-    if (senderSocketId) {
-     msgIds.forEach(msgId => {
-      io.to(senderSocketId).emit("message_status_update", {
-       messageId: msgId,
-       status: "delivered"
-      });
-     });
-    }
-   });
-  }
+  });
  } catch (err) {
-  console.error("Error delivering pending messages:", err.message);
+  console.error("[Socket] Pending delivery error:", err.message);
  }
 }
+
+// ════════════════════════════════════════════════════════════
+// ─── EXPORTS ───
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Generate a socket authentication token for a user.
+ * Call this from login/register routes.
+ */
+export const generateSocketToken = (userId) => {
+ return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "30d" });
+};
 
 export const getReceiverSocketId = (receiverId) => {
  return userSocketMap[receiverId];

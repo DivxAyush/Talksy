@@ -8,7 +8,16 @@ import mongoose from "mongoose";
 // ─── Send Message ───
 export const sendMessage = async (request, reply) => {
     try {
-        const { senderId, receiverId, message, replyTo, messageType, mediaUrl, mediaThumbnail, mediaDuration, mediaSize } = request.body;
+        const { senderId, receiverId, message, replyTo, messageType, mediaUrl, mediaThumbnail, mediaDuration, mediaSize, clientId } = request.body;
+
+        // 1. Optimistic Dedup: Check if this clientId already exists for this sender
+        if (clientId) {
+            const existingMessage = await UserMessage.findOne({ senderId, clientId }).lean();
+            if (existingMessage) {
+                console.log("[API] Duplicate message detected (clientId):", clientId);
+                return reply.send({ success: true, data: existingMessage, isDuplicate: true });
+            }
+        }
 
         const newMessage = new UserMessage({
             senderId,
@@ -20,6 +29,7 @@ export const sendMessage = async (request, reply) => {
             mediaDuration: mediaDuration || 0,
             mediaSize: mediaSize || 0,
             status: "sent",
+            clientId: clientId || null,
             replyTo: replyTo || null
         });
 
@@ -102,33 +112,32 @@ export const sendMessage = async (request, reply) => {
     }
 };
 
-// ─── Get Messages (Paginated) ───
+// ─── Get Messages (Paginated & Incremental) ───
 export const getMessages = async (request, reply) => {
     try {
         const { senderId, receiverId } = request.params;
-        const { page = 1, limit = 50 } = request.query;
+        const { page = 1, limit = 50, after } = request.query;
 
         const pageNum = parseInt(page);
         const limitNum = parseInt(limit);
         const skip = (pageNum - 1) * limitNum;
 
-        // Get total count for pagination info
-        const totalCount = await UserMessage.countDocuments({
+        let query = {
             $or: [
                 { senderId, receiverId },
                 { senderId: receiverId, receiverId: senderId }
             ],
-            // Exclude messages deleted "for me" by this user
             deletedFor: { $ne: senderId }
-        });
+        };
 
-        const messages = await UserMessage.find({
-            $or: [
-                { senderId, receiverId },
-                { senderId: receiverId, receiverId: senderId }
-            ],
-            deletedFor: { $ne: senderId }
-        })
+        if (after) {
+            query.createdAt = { $gt: new Date(after) };
+        }
+
+        // Get total count for pagination info
+        const totalCount = await UserMessage.countDocuments(query);
+
+        const messages = await UserMessage.find(query)
             .sort({ createdAt: -1 })  // newest first for pagination
             .skip(skip)
             .limit(limitNum)

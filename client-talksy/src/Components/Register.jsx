@@ -51,6 +51,7 @@ export default function Register({ setIsLoggedIn }) {
     await AsyncStorage.multiSet([
      ["userId", data.user._id],
      ["user", JSON.stringify(data.user)],
+     ["socketToken", data.socketToken || ""],
     ]);
     setUsername("");
     setMobile("");

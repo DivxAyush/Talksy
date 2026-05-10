@@ -83,6 +83,35 @@ export const ChatProvider = ({ children }) => {
         return [userId1, userId2].sort().join("_");
     };
 
+    // ─── Centralized Message Cache Sync ───
+    const syncMessageToCache = useCallback((senderId, receiverId, messageOrMessages) => {
+        const key = getCacheKey(senderId, receiverId);
+        const cached = messagesCacheRef.current[key] || { messages: [], page: 1, hasMore: true };
+        
+        const incoming = Array.isArray(messageOrMessages) ? messageOrMessages : [messageOrMessages];
+        const mergedMap = new Map();
+        
+        // Add existing cached messages
+        cached.messages.forEach(m => mergedMap.set(m._id || m.clientId, m));
+        
+        // Merge incoming (server data takes priority)
+        incoming.forEach(m => {
+            const id = m._id || m.clientId;
+            mergedMap.set(id, { ...(mergedMap.get(id) || {}), ...m });
+        });
+
+        const finalMessages = Array.from(mergedMap.values())
+            .sort((a, b) => new Date(b.createdAt || Date.now()) - new Date(a.createdAt || Date.now()))
+            .slice(0, 500); // Prevent memory growth: keep last 500 messages per chat
+
+        messagesCacheRef.current[key] = {
+            ...cached,
+            messages: finalMessages,
+            lastFetchTime: Date.now()
+        };
+        saveMessageCache();
+    }, []);
+
     const getCachedMessages = useCallback((senderId, receiverId) => {
         const key = getCacheKey(senderId, receiverId);
         return messagesCacheRef.current[key] || null;
@@ -97,33 +126,9 @@ export const ChatProvider = ({ children }) => {
         saveMessageCache();
     }, []);
 
-    const updateCachedMessage = useCallback((senderId, receiverId, updater) => {
-        const key = getCacheKey(senderId, receiverId);
-        const cached = messagesCacheRef.current[key];
-        if (cached) {
-            messagesCacheRef.current[key] = {
-                ...cached,
-                messages: updater(cached.messages),
-            };
-            saveMessageCache();
-        }
-    }, []);
-
     const addMessageToCache = useCallback((senderId, receiverId, message) => {
-        const key = getCacheKey(senderId, receiverId);
-        const cached = messagesCacheRef.current[key];
-        if (cached) {
-            // Add to front (newest first for inverted list)
-            const exists = cached.messages.some(m => m._id === message._id);
-            if (!exists) {
-                messagesCacheRef.current[key] = {
-                    ...cached,
-                    messages: [message, ...cached.messages],
-                };
-                saveMessageCache();
-            }
-        }
-    }, []);
+        syncMessageToCache(senderId, receiverId, message);
+    }, [syncMessageToCache]);
 
     // Update conversation when a new message arrives (called from socket)
     const updateConversationWithMessage = useCallback((message) => {
@@ -210,6 +215,57 @@ export const ChatProvider = ({ children }) => {
         );
     }, []);
 
+    // ─── Centralized Audio Service ───
+    const audioServiceRef = useRef({
+        activeSound: null,
+        activeSoundId: null,
+        playbackStatusUpdate: null,
+    });
+
+    const stopAudio = useCallback(async () => {
+        const svc = audioServiceRef.current;
+        if (svc.activeSound) {
+            try {
+                await svc.activeSound.unloadAsync();
+            } catch (err) { /* ignore cleanup errors */ }
+            svc.activeSound = null;
+            svc.activeSoundId = null;
+            if (svc.playbackStatusUpdate) svc.playbackStatusUpdate({ isPlaying: false, positionMillis: 0 });
+        }
+    }, []);
+
+    const playAudio = useCallback(async (uri, id, onStatusUpdate) => {
+        const svc = audioServiceRef.current;
+        if (svc.activeSoundId !== id) await stopAudio();
+
+        if (!svc.activeSound) {
+            try {
+                const { Audio } = require("expo-av");
+                const { sound } = await Audio.Sound.createAsync(
+                    { uri },
+                    { shouldPlay: true },
+                    (status) => {
+                        if (svc.playbackStatusUpdate) svc.playbackStatusUpdate(status);
+                        if (status.didJustFinish) stopAudio();
+                    }
+                );
+                svc.activeSound = sound;
+                svc.activeSoundId = id;
+            } catch (err) {
+                console.log("Audio play error:", err);
+                return;
+            }
+        } else {
+            await svc.activeSound.playAsync();
+        }
+        svc.playbackStatusUpdate = onStatusUpdate;
+    }, [stopAudio]);
+
+    const pauseAudio = useCallback(async () => {
+        const svc = audioServiceRef.current;
+        if (svc.activeSound) await svc.activeSound.pauseAsync();
+    }, []);
+
     return (
         <ChatContext.Provider value={{
             conversations,
@@ -221,11 +277,14 @@ export const ChatProvider = ({ children }) => {
             updateUserProfileInConversations,
             setCurrentChat,
             getCurrentChat,
-            // Message cache
             getCachedMessages,
             setCachedMessages,
-            updateCachedMessage,
             addMessageToCache,
+            syncMessageToCache,
+            playAudio,
+            pauseAudio,
+            stopAudio,
+            activeAudioId: audioServiceRef.current.activeSoundId
         }}>
             {children}
         </ChatContext.Provider>

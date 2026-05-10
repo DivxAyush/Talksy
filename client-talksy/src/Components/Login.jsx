@@ -42,6 +42,7 @@ export default function Login({ setIsLoggedIn }) {
     await AsyncStorage.multiSet([
      ["userId", data.user._id],
      ["user", JSON.stringify(data.user)],
+     ["socketToken", data.socketToken || ""],
     ]);
     setMobile("");
     setPassword("");
