@@ -128,7 +128,15 @@ export default function ChatUser({ route, navigation }) {
   })();
   setCurrentChat(receiverId);
   clearUnreadCount(receiverId);
-  return () => { setCurrentChat(null); };
+  return () => {
+   setCurrentChat(null);
+   // Stop typing indicator when leaving chat to prevent ghost typing
+   if (isTypingRef.current && socket) {
+    isTypingRef.current = false;
+    socket.emit("typing_stop", { senderId: senderIdRef.current, receiverId });
+   }
+   clearTimeout(typingTimerRef.current);
+  };
  }, []);
 
  // ─── Fetch messages (with cache support) ───
@@ -174,7 +182,11 @@ export default function ChatUser({ route, navigation }) {
  useEffect(() => {
   registerMessageHandler((msg) => {
    if (msg.senderId === receiverId) {
-    setMessages(prev => [msg, ...prev]);
+    // Dedup: prevent duplicate messages
+    setMessages(prev => {
+     if (prev.some(m => m._id === msg._id)) return prev;
+     return [msg, ...prev];
+    });
     // Mark as read immediately since we're viewing this chat
     if (socket) {
      socket.emit("message_read", { messageIds: [msg._id], senderId: msg.senderId });
@@ -439,19 +451,26 @@ export default function ChatUser({ route, navigation }) {
  }, []);
 
  // ─── Mark existing unread messages as read on open ───
+ // Run only once when we have senderId + initial messages loaded
  const hasMarkedRead = useRef(false);
+ const markReadTimeoutRef = useRef(null);
  useEffect(() => {
-  if (senderId && messages.length > 0 && socket && !hasMarkedRead.current) {
+  // Only mark read once per chat session, and only after initial messages load
+  if (senderId && messages.length > 0 && socket && !hasMarkedRead.current && !loading) {
    hasMarkedRead.current = true;
-   const unreadIds = messages
-    .filter(m => m.senderId === receiverId && m.status !== "read")
-    .map(m => m._id);
-   if (unreadIds.length > 0) {
-    socket.emit("message_read", { messageIds: unreadIds, senderId: receiverId });
-    setMessages(prev => prev.map(m => unreadIds.includes(m._id) ? { ...m, status: "read" } : m));
-   }
+   // Small delay to batch — prevents rapid-fire on mount
+   markReadTimeoutRef.current = setTimeout(() => {
+    const unreadIds = messages
+     .filter(m => m.senderId === receiverId && m.status !== "read")
+     .map(m => m._id);
+    if (unreadIds.length > 0) {
+     socket.emit("message_read", { messageIds: unreadIds, senderId: receiverId });
+     setMessages(prev => prev.map(m => unreadIds.includes(m._id) ? { ...m, status: "read" } : m));
+    }
+   }, 300);
   }
- }, [senderId, messages, socket]);
+  return () => { if (markReadTimeoutRef.current) clearTimeout(markReadTimeoutRef.current); };
+ }, [senderId, loading, socket]);
 
  // ─── Typing emit with debounce ───
  const handleTextChange = (val) => {

@@ -151,8 +151,9 @@ export const ChatProvider = ({ children }) => {
                     createdAt: message.createdAt
                 };
 
-                // If the message is from someone else & we're NOT in that chat, increment unread
-                if (message.senderId !== currentChatRef.current && currentChatRef.current !== message.senderId) {
+                // Increment unread only if message is FROM someone else AND we're NOT in that chat
+                const isViewingThisChat = currentChatRef.current === message.senderId;
+                if (!isViewingThisChat) {
                     conv.unreadCount = (conv.unreadCount || 0) + 1;
                 }
 

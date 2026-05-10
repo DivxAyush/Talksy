@@ -19,6 +19,16 @@ export const initSocket = (server) => {
 
   const userId = socket.handshake.query.userId;
   if (userId && userId !== "undefined") {
+   // If this user already has an active socket, clean up the old one
+   const existingSocketId = userSocketMap[userId];
+   if (existingSocketId && existingSocketId !== socket.id) {
+    console.log(`[Socket] User ${userId} reconnected: old=${existingSocketId} new=${socket.id}`);
+    // Force disconnect old socket if still alive
+    const oldSocket = io.sockets.sockets.get(existingSocketId);
+    if (oldSocket) {
+     oldSocket.disconnect(true);
+    }
+   }
    userSocketMap[userId] = socket.id;
   }
 
@@ -174,11 +184,17 @@ export const initSocket = (server) => {
   });
 
   // ─── Disconnect ───
-  socket.on("disconnect", () => {
-   console.log("User disconnected:", socket.id);
+  socket.on("disconnect", (reason) => {
+   console.log(`[Socket] User disconnected: ${socket.id} reason: ${reason}`);
    if (userId) {
-    delete userSocketMap[userId];
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    // Only delete if this socket is STILL the active one for this user
+    // This prevents a late-disconnecting old socket from removing a new connection
+    if (userSocketMap[userId] === socket.id) {
+     delete userSocketMap[userId];
+     io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    } else {
+     console.log(`[Socket] Skipping cleanup for ${userId} — already replaced by ${userSocketMap[userId]}`);
+    }
    }
   });
  });
