@@ -90,7 +90,7 @@ const MainApp = () => {
 
   return () => {
    if (notificationResponseListener.current) {
-    Notifications.removeNotificationSubscription(notificationResponseListener.current);
+    notificationResponseListener.current.remove();
    }
   };
  }, []);

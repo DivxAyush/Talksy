@@ -216,9 +216,9 @@ export const ChatProvider = ({ children }) => {
     }, []);
 
     // ─── Centralized Audio Service ───
+    const [activeAudioId, setActiveAudioId] = useState(null);
     const audioServiceRef = useRef({
         activeSound: null,
-        activeSoundId: null,
         playbackStatusUpdate: null,
     });
 
@@ -229,14 +229,14 @@ export const ChatProvider = ({ children }) => {
                 await svc.activeSound.unloadAsync();
             } catch (err) { /* ignore cleanup errors */ }
             svc.activeSound = null;
-            svc.activeSoundId = null;
+            setActiveAudioId(null);
             if (svc.playbackStatusUpdate) svc.playbackStatusUpdate({ isPlaying: false, positionMillis: 0 });
         }
     }, []);
 
     const playAudio = useCallback(async (uri, id, onStatusUpdate) => {
         const svc = audioServiceRef.current;
-        if (svc.activeSoundId !== id) await stopAudio();
+        if (activeAudioId !== id) await stopAudio();
 
         if (!svc.activeSound) {
             try {
@@ -250,7 +250,7 @@ export const ChatProvider = ({ children }) => {
                     }
                 );
                 svc.activeSound = sound;
-                svc.activeSoundId = id;
+                setActiveAudioId(id);
             } catch (err) {
                 console.log("Audio play error:", err);
                 return;
@@ -259,7 +259,7 @@ export const ChatProvider = ({ children }) => {
             await svc.activeSound.playAsync();
         }
         svc.playbackStatusUpdate = onStatusUpdate;
-    }, [stopAudio]);
+    }, [stopAudio, activeAudioId]);
 
     const pauseAudio = useCallback(async () => {
         const svc = audioServiceRef.current;
@@ -284,7 +284,7 @@ export const ChatProvider = ({ children }) => {
             playAudio,
             pauseAudio,
             stopAudio,
-            activeAudioId: audioServiceRef.current.activeSoundId
+            activeAudioId
         }}>
             {children}
         </ChatContext.Provider>
