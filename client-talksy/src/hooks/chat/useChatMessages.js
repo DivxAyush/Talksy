@@ -37,6 +37,13 @@ export const useChatMessages = (senderId, receiverId) => {
       isFetchingRef.current = true;
       if (pg > 1) setLoadingMore(true);
       
+      if (!senderId || !receiverId) {
+        isFetchingRef.current = false;
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+
       let url = `${API}/${senderId}/${receiverId}?page=${pg}&limit=50`;
       if (afterTimestamp) url += `&after=${encodeURIComponent(afterTimestamp)}`;
 
