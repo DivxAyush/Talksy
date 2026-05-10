@@ -1,34 +1,36 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
-  mediaDevices,
-  RTCView
-} from "react-native-webrtc";
 import { SocketContext } from "../context/SocketContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAgoraCall } from "../hooks/useAgoraCall";
 
 export default function VideoCallScreen({ route, navigation }) {
   const { user, isCaller, incomingSignal } = route.params;
   const { socket } = useContext(SocketContext);
   
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
   const [callStatus, setCallStatus] = useState(isCaller ? "Calling..." : "Incoming Video Call...");
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [cameraType, setCameraType] = useState('front');
-  
-  const pcRef = useRef(null);
   const [myId, setMyId] = useState("");
+  const channelName = isCaller ? `call_video_${Date.now()}` : incomingSignal?.signal?.channel || "default_channel";
+
+  // Use the Agora Call Hook (mocked for Expo Go compatibility)
+  const { 
+    isMuted, 
+    isVideoEnabled, 
+    toggleMute, 
+    toggleVideo, 
+    switchCamera, 
+    endCall: agoraEndCall 
+  } = useAgoraCall(
+    channelName, 
+    myId ? parseInt(myId.slice(-6), 16) : 0, 
+    true
+  );
 
   useEffect(() => {
     AsyncStorage.getItem("userId").then(id => {
       setMyId(id);
-      setupWebRTC(id);
+      setupCall(id, channelName);
     });
     
     return () => {
@@ -36,111 +38,42 @@ export default function VideoCallScreen({ route, navigation }) {
     };
   }, []);
 
-  const setupWebRTC = async (currentUserId) => {
-    try {
-      const sourceInfos = await mediaDevices.enumerateDevices();
-      let videoSourceId;
-      for (let i = 0; i < sourceInfos.length; i++) {
-        const sourceInfo = sourceInfos[i];
-        if (sourceInfo.kind === "videoinput" && sourceInfo.facing === (cameraType === 'front' ? "front" : "environment")) {
-          videoSourceId = sourceInfo.deviceId;
-        }
-      }
-
-      const stream = await mediaDevices.getUserMedia({
-        audio: true,
-        video: {
-          width: 640,
-          height: 480,
-          frameRate: 30,
-          facingMode: (cameraType === 'front' ? "user" : "environment"),
-          deviceId: videoSourceId
-        }
-      });
-      setLocalStream(stream);
-
-      const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-      const pc = new RTCPeerConnection(configuration);
-      pcRef.current = pc;
-
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+  const setupCall = (currentUserId, channel) => {
+    if (socket) {
+      socket.on("call_accepted", () => {
+        setCallStatus("Connected");
       });
 
-      pc.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
-      };
+      socket.on("call_ended", () => {
+        endCall(false);
+      });
+    }
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socket) {
-          socket.emit("ice_candidate", {
-            to: isCaller ? user._id : incomingSignal?.from,
-            candidate: event.candidate
-          });
-        }
-      };
-
+    if (isCaller) {
       if (socket) {
-        socket.on("call_accepted", async (signal) => {
-          setCallStatus("Connected");
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
-        });
-
-        socket.on("ice_candidate", async (candidate) => {
-          if (pcRef.current) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          }
-        });
-
-        socket.on("call_ended", () => {
-          endCall(false);
+        socket.emit("call_user", {
+          userToCall: user._id,
+          signalData: { channel },
+          from: currentUserId,
+          isVideo: true,
+          callerName: "Talksy User",
+          callerPic: ""
         });
       }
-
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        if (socket) {
-          socket.emit("call_user", {
-            userToCall: user._id,
-            signalData: offer,
-            from: currentUserId,
-            isVideo: true,
-            callerName: "Talksy User",
-            callerPic: ""
-          });
-        }
-      } else if (incomingSignal) {
-        await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal.signal));
-      }
-
-    } catch (err) {
-      console.log("WebRTC setup error:", err);
     }
   };
 
-  const acceptCall = async () => {
-    if (!pcRef.current || !incomingSignal) return;
-    try {
-      const answer = await pcRef.current.createAnswer();
-      await pcRef.current.setLocalDescription(answer);
-      if (socket) {
-        socket.emit("answer_call", { signal: answer, to: incomingSignal.from });
-      }
-      setCallStatus("Connected");
-    } catch (err) {
-      console.log("Accept call error:", err);
+  const acceptCall = () => {
+    if (!incomingSignal) return;
+    if (socket) {
+      socket.emit("answer_call", { signal: { channel: channelName }, to: incomingSignal.from });
     }
+    setCallStatus("Connected");
   };
 
   const endCall = (emit = true) => {
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-    }
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
+    agoraEndCall();
+    
     if (emit && socket) {
       const toId = isCaller ? user._id : incomingSignal?.from;
       if (toId) {
@@ -150,37 +83,14 @@ export default function VideoCallScreen({ route, navigation }) {
     navigation.goBack();
   };
 
-  const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
-    }
-  };
-
-  const toggleVideo = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsVideoOff(!isVideoOff);
-    }
-  };
-
-  const switchCamera = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => {
-        track._switchCamera();
-      });
-      setCameraType(cameraType === 'front' ? 'back' : 'front');
-    }
-  };
-
   return (
     <View style={s.container}>
-      {remoteStream && callStatus === "Connected" ? (
-        <RTCView streamURL={remoteStream.toURL()} style={s.remoteVideo} objectFit="cover" />
+      {callStatus === "Connected" ? (
+        <View style={s.remoteVideoMock}>
+          <Ionicons name="videocam" size={64} color="rgba(255,255,255,0.2)" />
+          <Text style={s.mockText}>Remote Video (Agora Ready)</Text>
+          <Text style={s.mockSubText}>Eject to Development Client for full video</Text>
+        </View>
       ) : (
         <View style={s.callingWrap}>
           <Text style={s.callText}>{callStatus}</Text>
@@ -188,9 +98,12 @@ export default function VideoCallScreen({ route, navigation }) {
         </View>
       )}
 
-      {localStream && (
+      {isVideoEnabled && (
         <View style={s.localVideoWrap}>
-          <RTCView streamURL={localStream.toURL()} style={s.localVideo} objectFit="cover" mirror={cameraType === 'front'} />
+          <View style={s.localVideoMock}>
+            <Ionicons name="person" size={32} color="rgba(255,255,255,0.4)" />
+            <Text style={s.mockTextLocal}>Local</Text>
+          </View>
         </View>
       )}
 
@@ -198,8 +111,8 @@ export default function VideoCallScreen({ route, navigation }) {
         <TouchableOpacity onPress={switchCamera} style={s.btn}>
           <Ionicons name="camera-reverse" size={28} color="#fff" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={toggleVideo} style={[s.btn, isVideoOff && { backgroundColor: "#fff" }]}>
-          <Ionicons name={isVideoOff ? "videocam-off" : "videocam"} size={28} color={isVideoOff ? "#000" : "#fff"} />
+        <TouchableOpacity onPress={toggleVideo} style={[s.btn, !isVideoEnabled && { backgroundColor: "#fff" }]}>
+          <Ionicons name={!isVideoEnabled ? "videocam-off" : "videocam"} size={28} color={!isVideoEnabled ? "#000" : "#fff"} />
         </TouchableOpacity>
         <TouchableOpacity onPress={toggleMute} style={[s.btn, isMuted && { backgroundColor: "#fff" }]}>
           <Ionicons name={isMuted ? "mic-off" : "mic"} size={28} color={isMuted ? "#000" : "#fff"} />
@@ -221,7 +134,9 @@ export default function VideoCallScreen({ route, navigation }) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1a1a2e" },
-  remoteVideo: { flex: 1 },
+  remoteVideoMock: { flex: 1, backgroundColor: "#202c33", justifyContent: "center", alignItems: "center" },
+  mockText: { color: "#fff", opacity: 0.8, fontSize: 18, marginTop: 16 },
+  mockSubText: { color: "#fff", opacity: 0.5, fontSize: 14, marginTop: 8 },
   callingWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
   callText: { fontSize: 18, color: "#fff", opacity: 0.8, marginBottom: 10 },
   nameText: { fontSize: 32, color: "#fff", fontWeight: "600" },
@@ -230,7 +145,8 @@ const s = StyleSheet.create({
     width: 100, height: 150, borderRadius: 12, overflow: "hidden", borderWidth: 2, borderColor: "#fff",
     elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5
   },
-  localVideo: { flex: 1 },
+  localVideoMock: { flex: 1, backgroundColor: "#333", justifyContent: "center", alignItems: "center" },
+  mockTextLocal: { color: "#fff", opacity: 0.6, fontSize: 14, marginTop: 4 },
   controls: { 
     position: "absolute", bottom: 40, left: 0, right: 0, 
     flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 20 

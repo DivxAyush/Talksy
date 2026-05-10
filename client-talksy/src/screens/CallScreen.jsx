@@ -1,35 +1,34 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Image, Animated } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
-  mediaDevices,
-} from "react-native-webrtc";
 import { SocketContext } from "../context/SocketContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAgoraCall } from "../hooks/useAgoraCall";
 
 export default function CallScreen({ route, navigation }) {
   const { user, isCaller, incomingSignal } = route.params;
   const { socket } = useContext(SocketContext);
   
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
   const [callStatus, setCallStatus] = useState(isCaller ? "Calling..." : "Incoming Call...");
-  const [isMuted, setIsMuted] = useState(false);
   const [isSpeaker, setIsSpeaker] = useState(false);
   
-  const pcRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
   const timerRef = useRef(null);
   const [myId, setMyId] = useState("");
+  const channelName = isCaller ? `call_${Date.now()}` : incomingSignal?.signal?.channel || "default_channel";
+
+  // Use the Agora Call Hook (mocked for Expo Go compatibility)
+  const { isMuted, toggleMute, endCall: agoraEndCall } = useAgoraCall(
+    channelName, 
+    myId ? parseInt(myId.slice(-6), 16) : 0, 
+    false
+  );
 
   useEffect(() => {
     AsyncStorage.getItem("userId").then(id => {
       setMyId(id);
-      setupWebRTC(id);
+      setupCall(id, channelName);
     });
     
     return () => {
@@ -37,100 +36,45 @@ export default function CallScreen({ route, navigation }) {
     };
   }, []);
 
-  const setupWebRTC = async (currentUserId) => {
-    try {
-      const stream = await mediaDevices.getUserMedia({
-        audio: true,
-        video: false
-      });
-      setLocalStream(stream);
-
-      const configuration = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-      const pc = new RTCPeerConnection(configuration);
-      pcRef.current = pc;
-
-      stream.getTracks().forEach(track => {
-        pc.addTrack(track, stream);
+  const setupCall = (currentUserId, channel) => {
+    if (socket) {
+      socket.on("call_accepted", () => {
+        setCallStatus("Connected");
+        startTimer();
       });
 
-      pc.ontrack = (event) => {
-        setRemoteStream(event.streams[0]);
-      };
+      socket.on("call_ended", () => {
+        endCall(false);
+      });
+    }
 
-      pc.onicecandidate = (event) => {
-        if (event.candidate && socket) {
-          socket.emit("ice_candidate", {
-            to: isCaller ? user._id : incomingSignal?.from,
-            candidate: event.candidate
-          });
-        }
-      };
-
-      // Register socket listeners
+    if (isCaller) {
       if (socket) {
-        socket.on("call_accepted", async (signal) => {
-          setCallStatus("Connected");
-          startTimer();
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
-        });
-
-        socket.on("ice_candidate", async (candidate) => {
-          if (pcRef.current) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
-          }
-        });
-
-        socket.on("call_ended", () => {
-          endCall(false);
+        socket.emit("call_user", {
+          userToCall: user._id,
+          signalData: { channel },
+          from: currentUserId,
+          isVideo: false,
+          callerName: "Talksy User",
+          callerPic: ""
         });
       }
-
-      if (isCaller) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        if (socket) {
-          socket.emit("call_user", {
-            userToCall: user._id,
-            signalData: offer,
-            from: currentUserId,
-            isVideo: false,
-            callerName: "Talksy User", // Ideally fetched from context
-            callerPic: ""
-          });
-        }
-      } else if (incomingSignal) {
-        await pc.setRemoteDescription(new RTCSessionDescription(incomingSignal.signal));
-      }
-
-    } catch (err) {
-      console.log("WebRTC setup error:", err);
     }
   };
 
-  const acceptCall = async () => {
-    if (!pcRef.current || !incomingSignal) return;
-    try {
-      const answer = await pcRef.current.createAnswer();
-      await pcRef.current.setLocalDescription(answer);
-      if (socket) {
-        socket.emit("answer_call", { signal: answer, to: incomingSignal.from });
-      }
-      setCallStatus("Connected");
-      startTimer();
-    } catch (err) {
-      console.log("Accept call error:", err);
+  const acceptCall = () => {
+    if (!incomingSignal) return;
+    if (socket) {
+      socket.emit("answer_call", { signal: { channel: channelName }, to: incomingSignal.from });
     }
+    setCallStatus("Connected");
+    startTimer();
   };
 
   const endCall = (emit = true) => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-    }
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
+    agoraEndCall();
+    
     if (emit && socket) {
       const toId = isCaller ? user._id : incomingSignal?.from;
       if (toId) {
@@ -138,15 +82,6 @@ export default function CallScreen({ route, navigation }) {
       }
     }
     navigation.goBack();
-  };
-
-  const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-      });
-      setIsMuted(!isMuted);
-    }
   };
 
   const startTimer = () => {
