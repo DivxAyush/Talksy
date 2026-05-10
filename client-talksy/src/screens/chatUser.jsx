@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useContext } from "react";
 import {
   View, Text, FlatList, ActivityIndicator, Keyboard, Animated, 
-  Vibration, Alert, KeyboardAvoidingView, PanResponder
+  Vibration, Alert, KeyboardAvoidingView, PanResponder, TouchableOpacity
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -118,6 +118,13 @@ export default function ChatUser({ route, navigation }) {
 
   useEffect(() => { if (senderId && receiverId) fetchMessages(); }, [senderId, receiverId, fetchMessages]);
 
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
+  const startRecordingRef = useRef(startRecording);
+  useEffect(() => { startRecordingRef.current = startRecording; }, [startRecording]);
+  const stopRecordingRef = useRef(stopRecording);
+  useEffect(() => { stopRecordingRef.current = stopRecording; }, [stopRecording]);
+
   useEffect(() => {
     registerProfileUpdateHandler((data) => {
       if (data.userId === receiverId) {
@@ -205,19 +212,19 @@ export default function ChatUser({ route, navigation }) {
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
-    onPanResponderGrant: () => { if (!textRef.current.trim()) startRecording(); },
+    onPanResponderGrant: () => { if (!textRef.current.trim()) startRecordingRef.current(); },
     onPanResponderMove: (_, gesture) => {
       if (isRecordingRef.current && gesture.dx < 0) {
         recordSlideAnim.setValue(gesture.dx);
-        if (gesture.dx < -120) { stopRecording(false); Vibration.vibrate(30); recordSlideAnim.setValue(0); }
+        if (gesture.dx < -120) { stopRecordingRef.current(false); Vibration.vibrate(30); recordSlideAnim.setValue(0); }
       }
     },
     onPanResponderRelease: () => {
-      if (textRef.current.trim()) { sendMessage(); } 
-      else if (isRecordingRef.current) { stopRecording(true); }
+      if (textRef.current.trim()) { sendMessageRef.current(); } 
+      else if (isRecordingRef.current) { stopRecordingRef.current(true); }
       Animated.spring(recordSlideAnim, { toValue: 0, useNativeDriver: true }).start();
     },
-    onPanResponderTerminate: () => { if (isRecordingRef.current) stopRecording(false); recordSlideAnim.setValue(0); }
+    onPanResponderTerminate: () => { if (isRecordingRef.current) stopRecordingRef.current(false); recordSlideAnim.setValue(0); }
   })).current;
 
   return (
@@ -227,7 +234,8 @@ export default function ChatUser({ route, navigation }) {
           navigation={navigation} displayName={displayName} displayPic={displayPic} 
           isOnline={isOnline} isReceiverTyping={isReceiverTyping} 
           onProfilePress={() => { setPopupVisible(true); Animated.timing(popupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start(); }}
-          isDark={isDark} textMain={textMain} textSub={textSub} headerBg={headerBg} border={border} user={user}
+          isDark={isDark} textMain={textMain} textSub={textSub} headerBg={headerBg} border={border} 
+          user={{ ...user, _id: receiverId, name: displayName, profilePic: displayPic }}
         />
 
         <View style={{ flex: 1 }}>

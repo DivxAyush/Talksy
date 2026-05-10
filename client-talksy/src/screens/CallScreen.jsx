@@ -50,13 +50,16 @@ export default function CallScreen({ route, navigation }) {
 
     if (isCaller) {
       if (socket) {
-        socket.emit("call_user", {
-          userToCall: user._id,
-          signalData: { channel },
-          from: currentUserId,
-          isVideo: false,
-          callerName: "Talksy User",
-          callerPic: ""
+        AsyncStorage.getItem("user").then(uStr => {
+          const me = uStr ? JSON.parse(uStr) : {};
+          socket.emit("call_user", {
+            userToCall: user._id || user.id,
+            signalData: { channel },
+            from: currentUserId,
+            isVideo: false,
+            callerName: me.name || me.username || "Talksy User",
+            callerPic: me.profilePic || ""
+          });
         });
       }
     }

@@ -197,6 +197,21 @@ export const initSocket = (server) => {
     about: profileData.about,
    });
   });
+  
+  // ════════════════════════════════════════
+  // ─── CALLING EVENTS ───
+  // ════════════════════════════════════════
+  socket.on("call_user", ({ userToCall, signalData, from, isVideo, callerName, callerPic }) => {
+    emitToUser(userToCall, "call_user", { signal: signalData, from, isVideo, callerName, callerPic });
+  });
+
+  socket.on("answer_call", (data) => {
+    emitToUser(data.to, "call_accepted", { signal: data.signal });
+  });
+
+  socket.on("end_call", ({ to }) => {
+    emitToUser(to, "call_ended", {});
+  });
 
 
 
