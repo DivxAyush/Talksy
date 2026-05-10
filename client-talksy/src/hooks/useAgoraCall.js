@@ -14,7 +14,7 @@ export const useAgoraCall = (channelName, uid, isVideoCall = false) => {
     const initCall = async () => {
       try {
         // App ID would usually come from environment variables or configs
-        await agoraService.initialize("YOUR_AGORA_APP_ID");
+        await agoraService.initialize("41e5efcef53e49939d8bb20a22cde666");
         await agoraService.joinChannel(null, channelName, uid);
         if (isMounted) {
           setIsJoined(true);
