@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useContext } from "react";
 import axios from "axios";
 import { ChatContext } from "../../context/ChatContext";
 import { mergeMessages } from "../../utils/chat/messageHelpers";
+import { getOfflineQueue } from "../../utils/chat/offlineQueue";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
 
@@ -22,10 +23,13 @@ export const useChatMessages = (senderId, receiverId) => {
     const version = ++requestVersionRef.current;
     
     try {
+      const queue = await getOfflineQueue();
+      const localQueue = queue.filter(m => m.senderId === senderId && m.receiverId === receiverId);
+
       if (pg === 1 && !append && !afterTimestamp && senderId) {
         const cached = getCachedMessages(senderId, receiverId);
         if (cached && cached.messages.length > 0 && (Date.now() - cached.lastFetchTime) < 60000) {
-          setMessages(cached.messages);
+          setMessages(mergeMessages(cached.messages, localQueue));
           setHasMore(cached.hasMore);
           setPage(cached.page);
           setLoading(false);
@@ -55,9 +59,12 @@ export const useChatMessages = (senderId, receiverId) => {
       if (data.success) {
         const incoming = data.messages.reverse();
         setMessages(prev => {
-           const merged = mergeMessages(prev, incoming, append || !!afterTimestamp);
-           // Sync to cache
-           if (pg === 1) syncMessageToCache(senderId, receiverId, merged);
+           let merged = mergeMessages(prev, incoming, append || !!afterTimestamp);
+           if (pg === 1) {
+              syncMessageToCache(senderId, receiverId, merged);
+           }
+           // Always include offline queue when showing messages
+           merged = mergeMessages(merged, localQueue);
            return merged;
         });
         

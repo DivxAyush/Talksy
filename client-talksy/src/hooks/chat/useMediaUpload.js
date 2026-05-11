@@ -4,14 +4,21 @@ import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
 import { uploadMedia } from "../../services/chat/uploadService";
 import { ChatContext } from "../../context/ChatContext";
+import { NetworkContext } from "../../context/NetworkContext";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
 
 export const useMediaUpload = (senderId, receiverId, setMessages, replyMsg, setReplyMsg) => {
   const [uploadingMedia, setUploadingMedia] = useState({}); // { tempId: { progress, type, uri } }
   const { addMessageToCache } = useContext(ChatContext);
+  const { isConnected } = useContext(NetworkContext);
 
   const handleMediaUpload = async (asset, type) => {
+    if (!isConnected) {
+      Alert.alert("Offline", "Cannot upload media while offline.");
+      return;
+    }
+
     const tempId = Date.now().toString();
     setUploadingMedia(prev => ({ ...prev, [tempId]: { progress: 0.1, type, uri: asset.uri } }));
 

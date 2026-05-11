@@ -1,8 +1,10 @@
-import { useState, useCallback, useContext } from "react";
+import { useState, useCallback, useContext, useEffect, useRef } from "react";
 import axios from "axios";
 import { ChatContext } from "../../context/ChatContext";
 import { SocketContext } from "../../context/SocketContext";
+import { NetworkContext } from "../../context/NetworkContext";
 import { mergeMessages } from "../../utils/chat/messageHelpers";
+import { enqueueMessage, dequeueMessage, getOfflineQueue, processQueueWithLock } from "../../utils/chat/offlineQueue";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
 
@@ -10,6 +12,44 @@ export const useChatActions = (senderId, receiverId, setMessages, replyMsg, setR
   const [sending, setSending] = useState(false);
   const { syncMessageToCache } = useContext(ChatContext);
   const { socket } = useContext(SocketContext);
+  const { isConnected } = useContext(NetworkContext);
+  
+  const isConnectedRef = useRef(isConnected);
+  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+
+  // Process offline queue
+  const processQueue = useCallback(async () => {
+    if (!isConnectedRef.current) return;
+    
+    processQueueWithLock(async () => {
+      const queue = await getOfflineQueue();
+      if (queue.length === 0) return;
+
+      for (const msg of queue) {
+        if (msg.senderId === senderId && msg.receiverId === receiverId) {
+           try {
+             const payload = { senderId, receiverId, message: msg.message, clientId: msg.clientId, messageType: msg.messageType, mediaUrl: msg.mediaUrl };
+             if (msg.replyToMessage) payload.replyTo = msg.replyToMessage._id;
+             
+             const { data } = await axios.post(`${API}/send-message`, payload);
+             if (data.success) {
+               await dequeueMessage(msg.clientId);
+               setMessages(prev => prev.map(m => m.clientId === msg.clientId ? data.data : m));
+               syncMessageToCache(senderId, receiverId, data.data);
+             }
+           } catch (err) {
+             console.log("[useChatActions] Queue process failed:", err.message);
+           }
+        }
+      }
+    });
+  }, [senderId, receiverId, setMessages, syncMessageToCache]);
+
+  useEffect(() => {
+    if (isConnected) {
+      processQueue();
+    }
+  }, [isConnected, processQueue]);
 
   const sendMessage = useCallback(async (customContent = null, retryId = null) => {
     const currentText = customContent || textRef.current || text;
@@ -39,7 +79,12 @@ export const useChatActions = (senderId, receiverId, setMessages, replyMsg, setR
       setMessages(prev => mergeMessages(prev, [optimisticMsg]));
       setReplyMsg(null);
     } else {
-      setMessages(prev => prev.map(m => (m.clientId === tempId || m._id === tempId) ? { ...m, status: "pending" } : m));
+      setMessages(prev => prev.map(m => (m.clientId === tempId || m._id === tempId) ? { ...m, status: "pending", message: msgText } : m));
+    }
+
+    if (!isConnectedRef.current) {
+       await enqueueMessage(optimisticMsg);
+       return;
     }
 
     setSending(true);
@@ -49,12 +94,15 @@ export const useChatActions = (senderId, receiverId, setMessages, replyMsg, setR
       
       const { data } = await axios.post(`${API}/send-message`, payload);
       if (data.success) {
+        await dequeueMessage(tempId);
         setMessages(prev => prev.map(m => m.clientId === tempId ? data.data : m));
         syncMessageToCache(senderId, receiverId, data.data);
       }
     } catch (err) {
       console.log("[useChatActions] Send failed:", err.message);
       setMessages(prev => prev.map(m => (m.clientId === tempId) ? { ...m, status: "failed" } : m));
+      // Option: enqueue on failure? 
+      // If it's a 500 or timeout, we might want to enqueue it. Let's just leave it as failed for manual retry.
     } finally {
       setSending(false);
     }

@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { ChatContext } from "./ChatContext";
 import { showLocalNotification } from "../utils/notificationService";
+import { getOfflineQueue, dequeueMessage, processQueueWithLock } from "../utils/chat/offlineQueue";
 export const SocketContext = createContext();
 
 const SERVER_URL = "https://talksy-3py1.onrender.com";
@@ -26,7 +27,8 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         updateConversationMessageStatus,
         updateUserProfileInConversations,
         fetchConversations,
-        getCurrentChat
+        getCurrentChat,
+        syncMessageToCache
     } = useContext(ChatContext);
 
     // ─── Cleanup all typing timeouts on unmount ───
@@ -195,6 +197,39 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         const userId = userIdRef.current;
         if (!userId) return;
 
+        // Process Offline Queue Globally
+        processQueueWithLock(async () => {
+            try {
+                const queue = await getOfflineQueue();
+                if (queue.length > 0) {
+                    console.log(`[Socket] Processing ${queue.length} offline messages...`);
+                    for (const msg of queue) {
+                        try {
+                            const payload = { 
+                                senderId: msg.senderId, 
+                                receiverId: msg.receiverId, 
+                                message: msg.message, 
+                                clientId: msg.clientId, 
+                                messageType: msg.messageType, 
+                                mediaUrl: msg.mediaUrl 
+                            };
+                            if (msg.replyToMessage) payload.replyTo = msg.replyToMessage._id;
+                            
+                            const { data } = await axios.post(`${SERVER_URL}/api/messages/send-message`, payload);
+                            if (data.success) {
+                                await dequeueMessage(msg.clientId);
+                                syncMessageToCache(msg.senderId, msg.receiverId, data.data);
+                            }
+                        } catch (err) {
+                            console.log("[Socket] Failed to process queued message:", err.message);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.log("[Socket] Queue processing error:", err);
+            }
+        });
+
         fetchConversations(true);
 
         try {
@@ -207,7 +242,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         setTypingUsers({});
         Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
         typingTimeoutsRef.current = {};
-    }, [fetchConversations]);
+    }, [fetchConversations, syncMessageToCache]);
 
     // ─── Main socket connection lifecycle ───
     useEffect(() => {

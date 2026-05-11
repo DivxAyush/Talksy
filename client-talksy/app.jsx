@@ -24,6 +24,7 @@ import GlobalCallListener from "./src/Components/GlobalCallListener";
 import { ThemeProvider, ThemeContext } from "./src/context/ThemeContext";
 import { ChatProvider } from "./src/context/ChatContext";
 import { SocketProvider } from "./src/context/SocketContext";
+import { NetworkProvider } from "./src/context/NetworkContext";
 import { initializePushNotifications } from "./src/utils/notificationService";
 
 const Stack = createNativeStackNavigator();
@@ -105,44 +106,46 @@ const MainApp = () => {
   colors: { ...DefaultTheme.colors, background: "#fff" }
  };
 
- return (
-  <ChatProvider>
-   <SocketProvider isLoggedIn={isLoggedIn}>
-    <NavigationContainer theme={navTheme} ref={navigationRef}>
-     <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
-     <GlobalCallListener navigationRef={navigationRef} />
-     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isLoggedIn ? (
-       <>
-        <Stack.Screen name="MainTabs">
-         {(props) => <MainTabs {...props} setIsLoggedIn={setIsLoggedIn} />}
-        </Stack.Screen>
-        <Stack.Screen name="chatUser" component={ChatUser} />
-        <Stack.Screen name="CallScreen" component={CallScreen} options={{ animation: "fade" }} />
-        <Stack.Screen name="VideoCallScreen" component={VideoCallScreen} options={{ animation: "fade" }} />
-        <Stack.Screen name="NewChat" component={NewChat} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
-       </>
-      ) : (
-       <>
-        <Stack.Screen name="Login">
-         {(props) => <Login {...props} setIsLoggedIn={setIsLoggedIn} />}
-        </Stack.Screen>
-        <Stack.Screen name="Register">
-         {(props) => <Register {...props} setIsLoggedIn={setIsLoggedIn} />}
-        </Stack.Screen>
-        <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
-       </>
-      )}
-     </Stack.Navigator>
-    </NavigationContainer>
-   </SocketProvider>
-  </ChatProvider>
- );
+  return (
+  <NetworkProvider>
+   <ChatProvider>
+    <SocketProvider isLoggedIn={isLoggedIn}>
+     <NavigationContainer theme={navTheme} ref={navigationRef}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
+      <GlobalCallListener navigationRef={navigationRef} />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+       {isLoggedIn ? (
+        <>
+         <Stack.Screen name="MainTabs">
+          {(props) => <MainTabs {...props} setIsLoggedIn={setIsLoggedIn} />}
+         </Stack.Screen>
+         <Stack.Screen name="chatUser" component={ChatUser} />
+         <Stack.Screen name="CallScreen" component={CallScreen} options={{ animation: "fade" }} />
+         <Stack.Screen name="VideoCallScreen" component={VideoCallScreen} options={{ animation: "fade" }} />
+         <Stack.Screen name="NewChat" component={NewChat} options={{ animation: "slide_from_right" }} />
+         <Stack.Screen name="Profile" component={Profile} options={{ animation: "slide_from_right" }} />
+         <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
+         <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
+        </>
+       ) : (
+        <>
+         <Stack.Screen name="Login">
+          {(props) => <Login {...props} setIsLoggedIn={setIsLoggedIn} />}
+         </Stack.Screen>
+         <Stack.Screen name="Register">
+          {(props) => <Register {...props} setIsLoggedIn={setIsLoggedIn} />}
+         </Stack.Screen>
+         <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ animation: "slide_from_right" }} />
+         <Stack.Screen name="VerifyOTP" component={VerifyOTP} options={{ animation: "slide_from_right" }} />
+         <Stack.Screen name="ChangePassword" component={ChangePassword} options={{ animation: "slide_from_right" }} />
+        </>
+       )}
+      </Stack.Navigator>
+     </NavigationContainer>
+    </SocketProvider>
+   </ChatProvider>
+  </NetworkProvider>
+  );
 };
 
 export default function App() {
