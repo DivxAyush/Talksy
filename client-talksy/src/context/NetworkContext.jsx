@@ -9,9 +9,17 @@ export const NetworkProvider = ({ children }) => {
 
     useEffect(() => {
         const unsubscribe = NetInfo.addEventListener(state => {
-            setIsConnected(state.isConnected);
-            setIsInternetReachable(state.isInternetReachable);
+            // Normalize to strict boolean to avoid null errors
+            setIsConnected(state.isConnected === true || state.isConnected === null); 
+            setIsInternetReachable(state.isInternetReachable === true || state.isInternetReachable === null);
         });
+
+        // Force initial check
+        NetInfo.fetch().then(state => {
+            setIsConnected(state.isConnected === true || state.isConnected === null);
+            setIsInternetReachable(state.isInternetReachable === true || state.isInternetReachable === null);
+        });
+
         return () => unsubscribe();
     }, []);
 

@@ -14,7 +14,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const [socket, setSocket] = useState(null);
     const [onlineUsers, setOnlineUsers] = useState([]);
     const [typingUsers, setTypingUsers] = useState({}); // { senderId: true }
-    
+
     // Refs for stable references
     const socketRef = useRef(null);
     const appStateRef = useRef(AppState.currentState);
@@ -90,8 +90,8 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const cleanupSocketListeners = useCallback((sock) => {
         if (!sock) return;
         const appEvents = [
-            "getOnlineUsers", "newMessage", "message_status_update", 
-            "bulk_message_status_update", "messages_read", "message_deleted", 
+            "getOnlineUsers", "newMessage", "message_status_update",
+            "bulk_message_status_update", "messages_read", "message_deleted",
             "profile_updated", "typing_start", "typing_stop",
             "connect", "disconnect", "connect_error"
         ];
@@ -111,16 +111,25 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
             setOnlineUsers(users);
         });
 
+        // Safe Typing Indicator with useRef-based TTL
+        const notifiedMessageIds = new Set();
+
         sock.on("newMessage", async (message) => {
             console.log("[Socket] newMessage received:", message._id);
             if (messageHandlerRef.current) messageHandlerRef.current(message);
             updateConversationWithMessage(message);
 
             const currentChat = getCurrentChat();
-            // Use stable ref for AppState to avoid stale checks during race conditions
             const isAppBackgrounded = appStateRef.current.match(/inactive|background/);
-            
-            if (message.senderId !== currentChat || isAppBackgrounded) {
+
+            if (!notifiedMessageIds.has(message._id) && (message.senderId !== currentChat || isAppBackgrounded)) {
+                notifiedMessageIds.add(message._id);
+                // Keep set small
+                if (notifiedMessageIds.size > 100) {
+                    const arr = Array.from(notifiedMessageIds);
+                    arr.slice(0, 50).forEach(id => notifiedMessageIds.delete(id));
+                }
+
                 try {
                     const senderName = message.senderName || "New Message";
                     await showLocalNotification(
@@ -167,7 +176,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         sock.on("typing_start", ({ senderId }) => {
             setTypingUsers(prev => ({ ...prev, [senderId]: true }));
             if (typingTimeoutsRef.current[senderId]) clearTimeout(typingTimeoutsRef.current[senderId]);
-            
+
             typingTimeoutsRef.current[senderId] = setTimeout(() => {
                 setTypingUsers(prev => {
                     const next = { ...prev };
@@ -204,24 +213,40 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                 if (queue.length > 0) {
                     console.log(`[Socket] Processing ${queue.length} offline messages...`);
                     for (const msg of queue) {
+                        // Strict Queue Ordering & Exponential Backoff
+                        const now = Date.now();
+                        const retryCount = msg.retryCount || 0;
+                        const cooldown = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s, 8s, 16s...
+
+                        if (now - (msg.lastRetryAt || 0) < cooldown) {
+                            console.log(`[Socket] Queue item ${msg.clientId} in cooldown. Breaking queue to preserve order.`);
+                            break;
+                        }
+
                         try {
-                            const payload = { 
-                                senderId: msg.senderId, 
-                                receiverId: msg.receiverId, 
-                                message: msg.message, 
-                                clientId: msg.clientId, 
-                                messageType: msg.messageType, 
-                                mediaUrl: msg.mediaUrl 
+                            const payload = {
+                                senderId: msg.senderId,
+                                receiverId: msg.receiverId,
+                                message: msg.message,
+                                clientId: msg.clientId,
+                                messageType: msg.messageType,
+                                mediaUrl: msg.mediaUrl
                             };
                             if (msg.replyToMessage) payload.replyTo = msg.replyToMessage._id;
-                            
+
                             const { data } = await axios.post(`${SERVER_URL}/api/messages/send-message`, payload);
                             if (data.success) {
                                 await dequeueMessage(msg.clientId);
                                 syncMessageToCache(msg.senderId, msg.receiverId, data.data);
+                            } else {
+                                // Explicit failure from server (not success)
+                                throw new Error("Server rejected message");
                             }
                         } catch (err) {
                             console.log("[Socket] Failed to process queued message:", err.message);
+                            const { markQueueFailure } = require("../utils/chat/offlineQueue");
+                            await markQueueFailure(msg.clientId);
+                            break; // STOP processing to guarantee strict sequential ordering
                         }
                     }
                 }
