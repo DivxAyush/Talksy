@@ -10,12 +10,15 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(item.mediaDuration || 0);
   const lastUpdateRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   const isActive = activeAudioId === item._id;
 
   const onStatusUpdate = useCallback((status) => {
+    if (!isMountedRef.current) return; // Prevent state updates after unmount
     if (status.isLoaded) {
       const now = Date.now();
+      // Throttle updates to max 10fps (100ms) to reduce render pressure
       if (now - lastUpdateRef.current > 100 || status.didJustFinish) {
         setIsPlaying(status.isPlaying);
         setProgress(status.positionMillis / (status.durationMillis || 1));
@@ -28,13 +31,18 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
     if (!isActive) {
       setIsPlaying(false);
       setProgress(0);
     }
   }, [isActive]);
 
-  const handleTogglePlay = async () => {
+  const handleTogglePlay = useCallback(async () => {
     try {
       if (isPlaying && isActive) {
         await pauseAudio();
@@ -44,7 +52,7 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
         setIsPlaying(true);
       }
     } catch (err) { console.log("Voice play error:", err); }
-  };
+  }, [isPlaying, isActive, pauseAudio, playAudio, item.mediaUrl, item._id, onStatusUpdate]);
 
   return (
     <View style={s.voiceBubble}>
@@ -61,6 +69,16 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
         </Text>
       </View>
     </View>
+  );
+}, (prev, next) => {
+  // Only rerender if playback-relevant data changes
+  return (
+    prev.item._id === next.item._id &&
+    prev.item.mediaUrl === next.item.mediaUrl &&
+    prev.item.mediaDuration === next.item.mediaDuration &&
+    prev.isMe === next.isMe &&
+    prev.accentPurple === next.accentPurple &&
+    prev.textSub === next.textSub
   );
 });
 

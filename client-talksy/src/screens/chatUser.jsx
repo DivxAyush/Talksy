@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef, useCallback, useContext } from "react";
+import React, { useEffect, useState, useRef, useCallback, useContext, useMemo } from "react";
 import {
   View, Text, FlatList, ActivityIndicator, Keyboard, Animated, 
-  Vibration, Alert, KeyboardAvoidingView, PanResponder, TouchableOpacity
+  Alert, KeyboardAvoidingView, PanResponder, TouchableOpacity, Platform
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
@@ -33,6 +34,9 @@ import UploadingBubble from "../Components/chat/UploadingBubble";
 
 // Utils & Styles
 import { s } from "./ChatUser.styles";
+
+// ─── Module-level stable keyExtractor (never recreated) ───
+const msgKeyExtractor = (item) => item._id || item.clientId;
 
 export default function ChatUser({ route, navigation }) {
   const { user } = route.params;
@@ -135,47 +139,49 @@ export default function ChatUser({ route, navigation }) {
     return () => unregisterProfileUpdateHandler();
   }, [receiverId, registerProfileUpdateHandler, unregisterProfileUpdateHandler]);
 
-  // ─── UI Handlers ───
-  const handleTextChange = (val) => {
+  // ─── UI Handlers (stabilized with useCallback) ───
+  const handleTextChange = useCallback((val) => {
     setText(val);
     textRef.current = val;
     if (!socket) return;
     if (!isTypingRef.current && val.trim()) {
       isTypingRef.current = true;
-      socket.emit("typing_start", { senderId, receiverId });
+      socket.emit("typing_start", { senderId: senderIdRef.current, receiverId });
     }
     clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
       if (isTypingRef.current) {
         isTypingRef.current = false;
-        socket.emit("typing_stop", { senderId, receiverId });
+        socket.emit("typing_stop", { senderId: senderIdRef.current, receiverId });
       }
     }, 2000);
-  };
+  }, [socket, receiverId]);
 
-  const toggleAttachMenu = () => {
-    setShowAttachMenu(!showAttachMenu);
-    Animated.spring(attachAnim, { toValue: showAttachMenu ? 0 : 1, useNativeDriver: true }).start();
-  };
+  const toggleAttachMenu = useCallback(() => {
+    setShowAttachMenu(prev => {
+      Animated.spring(attachAnim, { toValue: prev ? 0 : 1, useNativeDriver: true }).start();
+      return !prev;
+    });
+  }, [attachAnim]);
 
   const openActionModal = useCallback((msg) => {
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedMsg(msg);
     Animated.timing(actionAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+  }, [actionAnim]);
+
+  const closeActionModal = useCallback(() => {
+    Animated.timing(actionAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setSelectedMsg(null));
   }, []);
 
-  const closeActionModal = () => {
-    Animated.timing(actionAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setSelectedMsg(null));
-  };
-
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     if (selectedMsg?.message) await Clipboard.setStringAsync(selectedMsg.message);
     closeActionModal();
-  };
+  }, [selectedMsg, closeActionModal]);
 
-  const handleReply = () => { setReplyMsg(selectedMsg); closeActionModal(); };
+  const handleReply = useCallback(() => { setReplyMsg(selectedMsg); closeActionModal(); }, [selectedMsg, closeActionModal]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     closeActionModal();
     const isMe = selectedMsg?.senderId === senderId;
     setTimeout(() => {
@@ -194,8 +200,9 @@ export default function ChatUser({ route, navigation }) {
       }
       Alert.alert("Delete Message", "Choose an option", options);
     }, 300);
-  };
+  }, [selectedMsg, senderId, socket, setMessages, closeActionModal]);
 
+  // ─── FlatList Performance: Stable read-receipt handler via ref ───
   const markVisibleAsRead = useCallback((viewableItems) => {
     if (!socket || !senderId) return;
     const unreadIds = viewableItems
@@ -209,6 +216,86 @@ export default function ChatUser({ route, navigation }) {
     }
   }, [socket, senderId, receiverId, setMessages, processedReadIdsRef]);
 
+  // Ref-based handlers for FlatList (must be stable across renders to avoid VirtualizedList warning)
+  const markVisibleAsReadRef = useRef(markVisibleAsRead);
+  useEffect(() => { markVisibleAsReadRef.current = markVisibleAsRead; }, [markVisibleAsRead]);
+
+  const onViewableItemsChangedRef = useRef(({ viewableItems }) => {
+    markVisibleAsReadRef.current(viewableItems);
+  });
+
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 300,
+  });
+
+  // ─── Stable media press handler ───
+  const handlePressMedia = useCallback((m) => {
+    setMediaViewer({ type: m.messageType, url: m.mediaUrl, caption: m.message });
+  }, []);
+
+  // ─── Memoized renderItem (prevents MessageBubble prop identity churn) ───
+  const renderMessage = useCallback(({ item, index }) => {
+    // Note: Since FlatList is inverted, index 0 is the newest message.
+    // index + 1 is the OLDER message, index - 1 is the NEWER message.
+    const olderMsg = messages[index + 1];
+    const newerMsg = messages[index - 1];
+
+    const isSameSenderAsOlder = olderMsg && olderMsg.senderId === item.senderId;
+    const isSameSenderAsNewer = newerMsg && newerMsg.senderId === item.senderId;
+
+    // Time difference for grouping (e.g., 5 mins)
+    const timeDiffOlder = olderMsg ? Math.abs(new Date(item.createdAt) - new Date(olderMsg.createdAt)) : 0;
+    const timeDiffNewer = newerMsg ? Math.abs(new Date(newerMsg.createdAt) - new Date(item.createdAt)) : 0;
+
+    const isGroupedStart = isSameSenderAsOlder && timeDiffOlder < 300000;
+    const isGroupedEnd = isSameSenderAsNewer && timeDiffNewer < 300000;
+
+    // Show date if it's the first message of the day (chronologically oldest, so no older message or older message is on a different day)
+    let showDate = false;
+    if (!olderMsg) {
+      showDate = true;
+    } else {
+      const currentDate = new Date(item.createdAt).toDateString();
+      const olderDate = new Date(olderMsg.createdAt).toDateString();
+      if (currentDate !== olderDate) showDate = true;
+    }
+
+    return (
+      <MessageBubble 
+        item={item} senderId={senderId} displayName={displayName} 
+        myBubble={myBubble} otherBubble={otherBubble} myBubbleTxt={myBubbleTxt} otherBubbleTxt={otherBubbleTxt}
+        accentPurple={accentPurple} textSub={textSub} onLongPress={openActionModal}
+        onPressMedia={handlePressMedia}
+        isGroupedStart={isGroupedStart}
+        isGroupedEnd={isGroupedEnd}
+        showDate={showDate}
+        onSwipeToReply={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setReplyMsg(item);
+        }}
+      />
+    );
+  }, [messages, senderId, displayName, myBubble, otherBubble, myBubbleTxt, otherBubbleTxt, accentPurple, textSub, openActionModal, handlePressMedia]);
+
+  // ─── Stable pagination handler ───
+  const handleLoadMore = useCallback(() => {
+    if (hasMore && !loadingMore) fetchMessages(page + 1, true);
+  }, [hasMore, loadingMore, page, fetchMessages]);
+
+  // ─── Memoized List Header (typing + uploading indicators) ───
+  const listHeader = useMemo(() => (
+    <View>
+      {isReceiverTyping && <TypingBubble otherBubble={otherBubble} dot1={typingDots[0]} dot2={typingDots[1]} dot3={typingDots[2]} textSub={textSub} />}
+      {Object.entries(uploadingMedia).map(([id, data]) => <UploadingBubble key={id} data={data} myBubble={myBubble} />)}
+    </View>
+  ), [isReceiverTyping, otherBubble, textSub, uploadingMedia, myBubble]);
+
+  // ─── Memoized List Footer ───
+  const listFooter = useMemo(() => (
+    loadingMore ? <ActivityIndicator size="small" color={textSub} style={{ marginVertical: 10 }} /> : null
+  ), [loadingMore, textSub]);
+
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
@@ -216,11 +303,14 @@ export default function ChatUser({ route, navigation }) {
     onPanResponderMove: (_, gesture) => {
       if (isRecordingRef.current && gesture.dx < 0) {
         recordSlideAnim.setValue(gesture.dx);
-        if (gesture.dx < -120) { stopRecordingRef.current(false); Vibration.vibrate(30); recordSlideAnim.setValue(0); }
+        if (gesture.dx < -120) { stopRecordingRef.current(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); recordSlideAnim.setValue(0); }
       }
     },
     onPanResponderRelease: () => {
-      if (textRef.current.trim()) { sendMessageRef.current(); } 
+      if (textRef.current.trim()) { 
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        sendMessageRef.current(); 
+      } 
       else if (isRecordingRef.current) { stopRecordingRef.current(true); }
       Animated.spring(recordSlideAnim, { toValue: 0, useNativeDriver: true }).start();
     },
@@ -245,28 +335,25 @@ export default function ChatUser({ route, navigation }) {
             <FlatList
               ref={flatRef}
               data={messages}
-              keyExtractor={(item) => item._id || item.clientId}
-              renderItem={({ item }) => (
-                <MessageBubble 
-                  item={item} senderId={senderId} displayName={displayName} 
-                  myBubble={myBubble} otherBubble={otherBubble} myBubbleTxt={myBubbleTxt} otherBubbleTxt={otherBubbleTxt}
-                  accentPurple={accentPurple} textSub={textSub} onLongPress={openActionModal}
-                  onPressMedia={(m) => setMediaViewer({ type: m.messageType, url: m.mediaUrl, caption: m.message })}
-                />
-              )}
+              keyExtractor={msgKeyExtractor}
+              renderItem={renderMessage}
               contentContainerStyle={s.msgList}
               inverted keyboardShouldPersistTaps="handled"
-              onEndReached={() => { if (hasMore && !loadingMore) fetchMessages(page + 1, true); }}
-              onEndReachedThreshold={0.5}
-              onViewableItemsChanged={({ viewableItems }) => markVisibleAsRead(viewableItems)}
-              viewabilityConfig={{ itemVisiblePercentThreshold: 50, minimumViewTime: 300 }}
-              ListHeaderComponent={
-                <View>
-                  {isReceiverTyping && <TypingBubble otherBubble={otherBubble} dot1={typingDots[0]} dot2={typingDots[1]} dot3={typingDots[2]} textSub={textSub} />}
-                  {Object.entries(uploadingMedia).map(([id, data]) => <UploadingBubble key={id} data={data} myBubble={myBubble} />)}
-                </View>
-              }
-              ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={textSub} style={{ marginVertical: 10 }} /> : null}
+              // ─── Virtualization Tuning ───
+              windowSize={11}
+              initialNumToRender={15}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
+              removeClippedSubviews={Platform.OS === "android"}
+              // ─── Pagination ───
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.4}
+              // ─── Read Receipts (stable refs prevent VirtualizedList warnings) ───
+              onViewableItemsChanged={onViewableItemsChangedRef.current}
+              viewabilityConfig={viewabilityConfigRef.current}
+              // ─── Memoized Header/Footer ───
+              ListHeaderComponent={listHeader}
+              ListFooterComponent={listFooter}
             />
           )}
         </View>

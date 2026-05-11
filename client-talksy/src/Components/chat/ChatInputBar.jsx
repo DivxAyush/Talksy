@@ -1,9 +1,10 @@
 import React from "react";
 import { View, TextInput, TouchableOpacity, Text, Animated, ActivityIndicator, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { formatDuration } from "../../utils/chat/formatters";
 
-const ChatInputBar = ({
+const ChatInputBar = React.memo(({
   text,
   handleTextChange,
   isRecording,
@@ -33,7 +34,10 @@ const ChatInputBar = ({
         </View>
       ) : (
         <>
-          <TouchableOpacity onPress={toggleAttachMenu} style={s.attachBtn}>
+          <TouchableOpacity onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            toggleAttachMenu();
+          }} style={s.attachBtn}>
             <Ionicons name="add" size={28} color={textSub} />
           </TouchableOpacity>
           <View style={[s.inputBox, { backgroundColor: surface }]}>
@@ -67,7 +71,22 @@ const ChatInputBar = ({
       </Animated.View>
     </View>
   );
-};
+}, (prev, next) => {
+  // Custom comparator: skip rerender if visible state hasn't changed
+  return (
+    prev.text === next.text &&
+    prev.isRecording === next.isRecording &&
+    prev.recordDuration === next.recordDuration &&
+    prev.sending === next.sending &&
+    prev.hasText === next.hasText &&
+    prev.textMain === next.textMain &&
+    prev.textSub === next.textSub &&
+    prev.surface === next.surface &&
+    prev.headerBg === next.headerBg &&
+    prev.border === next.border &&
+    prev.myBubble === next.myBubble
+  );
+});
 
 const s = StyleSheet.create({
   inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: 1 },

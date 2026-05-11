@@ -2,7 +2,7 @@ import React from "react";
 import { View, Image, ActivityIndicator, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-const UploadingBubble = ({ data, myBubble }) => (
+const UploadingBubble = React.memo(({ data, myBubble }) => (
   <View style={[s.bubbleWrap, s.bubbleRight]}>
     <View style={[s.bubble, { backgroundColor: myBubble, padding: 4, borderRadius: 12 }]}>
       {data.type === "image" || data.type === "video" ? (
@@ -25,7 +25,7 @@ const UploadingBubble = ({ data, myBubble }) => (
       )}
     </View>
   </View>
-);
+));
 
 const s = StyleSheet.create({
   bubbleWrap: { marginBottom: 6, maxWidth: "78%", alignSelf: "flex-end" },

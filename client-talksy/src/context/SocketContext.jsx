@@ -1,11 +1,12 @@
-import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from "react";
+import React, { createContext, useState, useEffect, useContext, useRef, useCallback, useMemo } from "react";
 import { AppState } from "react-native";
 import io from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { ChatContext } from "./ChatContext";
-import { showLocalNotification } from "../utils/notificationService";
+import { showLocalNotification, setActiveChat as setNotificationActiveChat, markAsNotified, dismissChatNotifications } from "../utils/notificationService";
 import { getOfflineQueue, dequeueMessage, processQueueWithLock } from "../utils/chat/offlineQueue";
+
 export const SocketContext = createContext();
 
 const SERVER_URL = "https://talksy-3py1.onrender.com";
@@ -21,6 +22,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
     const isConnectingRef = useRef(false);
     const userIdRef = useRef(null);
     const typingTimeoutsRef = useRef({});
+    const reconnectCooldownRef = useRef(0); // Prevents duplicate reconnect recovery
 
     const {
         updateConversationWithMessage,
@@ -28,8 +30,15 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         updateUserProfileInConversations,
         fetchConversations,
         getCurrentChat,
+        setCurrentChat,
         syncMessageToCache
     } = useContext(ChatContext);
+
+    // ─── Sync active chat with notification service ───
+    const syncActiveChatToNotifications = useCallback(() => {
+        const currentChat = getCurrentChat();
+        setNotificationActiveChat(currentChat);
+    }, [getCurrentChat]);
 
     // ─── Cleanup all typing timeouts on unmount ───
     useEffect(() => {
@@ -111,35 +120,43 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
             setOnlineUsers(users);
         });
 
-        // Safe Typing Indicator with useRef-based TTL
-        const notifiedMessageIds = new Set();
-
         sock.on("newMessage", async (message) => {
             console.log("[Socket] newMessage received:", message._id);
             if (messageHandlerRef.current) messageHandlerRef.current(message);
             updateConversationWithMessage(message);
 
+            // ─── Intelligent Notification Decision ───
             const currentChat = getCurrentChat();
-            const isAppBackgrounded = appStateRef.current.match(/inactive|background/);
+            const appState = appStateRef.current;
+            const isViewingThisChat = message.senderId === currentChat && appState === "active";
 
-            if (!notifiedMessageIds.has(message._id) && (message.senderId !== currentChat || isAppBackgrounded)) {
-                notifiedMessageIds.add(message._id);
-                // Keep set small
-                if (notifiedMessageIds.size > 100) {
-                    const arr = Array.from(notifiedMessageIds);
-                    arr.slice(0, 50).forEach(id => notifiedMessageIds.delete(id));
-                }
+            if (isViewingThisChat) {
+                // User is viewing this exact chat in foreground → suppress entirely
+                console.log("[Socket] Notification suppressed — user viewing this chat");
+                markAsNotified(message._id); // Mark as handled for push dedup
+                return;
+            }
 
-                try {
-                    const senderName = message.senderName || "New Message";
-                    await showLocalNotification(
-                        senderName,
-                        message.message || "Sent you a message",
-                        { type: "new_message", senderId: message.senderId }
-                    );
-                } catch (err) {
-                    console.log("[Socket] Notification error:", err);
-                }
+            // Show notification (dedup + rate limiting handled inside showLocalNotification)
+            try {
+                const senderName = message.senderName || "New Message";
+                let bodyText = message.message || "Sent you a message";
+                if (message.messageType === "image") bodyText = "📷 Photo";
+                else if (message.messageType === "video") bodyText = "🎥 Video";
+                else if (message.messageType === "voice") bodyText = "🎤 Voice message";
+
+                await showLocalNotification(
+                    senderName,
+                    bodyText,
+                    { 
+                        type: "new_message", 
+                        senderId: message.senderId,
+                        messageId: message._id,
+                        senderName: senderName,
+                    }
+                );
+            } catch (err) {
+                console.log("[Socket] Notification error:", err);
             }
         });
 
@@ -174,11 +191,15 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
 
         // Safe Typing Indicator with useRef-based TTL (prevents window pollution)
         sock.on("typing_start", ({ senderId }) => {
-            setTypingUsers(prev => ({ ...prev, [senderId]: true }));
+            setTypingUsers(prev => {
+                if (prev[senderId]) return prev; // Already typing — skip state update
+                return { ...prev, [senderId]: true };
+            });
             if (typingTimeoutsRef.current[senderId]) clearTimeout(typingTimeoutsRef.current[senderId]);
 
             typingTimeoutsRef.current[senderId] = setTimeout(() => {
                 setTypingUsers(prev => {
+                    if (!prev[senderId]) return prev; // Already removed — skip
                     const next = { ...prev };
                     delete next[senderId];
                     return next;
@@ -193,6 +214,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                 delete typingTimeoutsRef.current[senderId];
             }
             setTypingUsers(prev => {
+                if (!prev[senderId]) return prev; // Already removed — skip state update
                 const next = { ...prev };
                 delete next[senderId];
                 return next;
@@ -200,11 +222,22 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         });
     }, [updateConversationWithMessage, updateConversationMessageStatus, updateUserProfileInConversations, fetchConversations, getCurrentChat, cleanupSocketListeners]);
 
-    // ─── Handle reconnect recovery ───
+    // ─── Handle reconnect recovery (with cooldown to prevent duplicates) ───
     const handleReconnect = useCallback(async () => {
+        const now = Date.now();
+        // Prevent duplicate reconnect recovery within 5 seconds
+        if (now - reconnectCooldownRef.current < 5000) {
+            console.log("[Socket] Reconnect recovery skipped — cooldown active");
+            return;
+        }
+        reconnectCooldownRef.current = now;
+
         console.log("[Socket] Reconnected — recovering state...");
         const userId = userIdRef.current;
         if (!userId) return;
+
+        // Sync active chat state to notification service
+        syncActiveChatToNotifications();
 
         // Process Offline Queue Globally
         processQueueWithLock(async () => {
@@ -267,7 +300,7 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
         setTypingUsers({});
         Object.values(typingTimeoutsRef.current).forEach(clearTimeout);
         typingTimeoutsRef.current = {};
-    }, [fetchConversations, syncMessageToCache]);
+    }, [fetchConversations, syncMessageToCache, syncActiveChatToNotifications]);
 
     // ─── Main socket connection lifecycle ───
     useEffect(() => {
@@ -315,6 +348,8 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                     transports: ["websocket"],
                     reconnection: true,
                     reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 10000,
                 });
 
                 socketRef.current = newSocket;
@@ -376,13 +411,20 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                 const sock = socketRef.current;
                 const userId = userIdRef.current;
 
+                // Sync active chat state for notification suppression
+                syncActiveChatToNotifications();
+
+                // Dismiss notifications for the currently active chat
+                const currentChat = getCurrentChat();
+                if (currentChat) {
+                    dismissChatNotifications(currentChat);
+                }
+
                 if (sock && !sock.connected) {
                     // Socket died while in background — force reconnect
                     console.log("[AppState] Socket disconnected, reconnecting...");
                     sock.connect();
-                }
-
-                if (sock?.connected && userId) {
+                } else if (sock?.connected && userId) {
                     // Socket is alive — just refresh state
                     handleReconnect();
                 }
@@ -396,29 +438,48 @@ export const SocketProvider = ({ children, isLoggedIn }) => {
                 console.log("[AppState] Going to background");
                 // Clear typing indicators — no point keeping them
                 setTypingUsers({});
+                // Sync notification state: clear active chat so push notifications show
+                setNotificationActiveChat(null);
             }
         };
 
         const subscription = AppState.addEventListener("change", handleAppStateChange);
         return () => subscription?.remove();
-    }, [handleReconnect]);
+    }, [handleReconnect, syncActiveChatToNotifications, getCurrentChat]);
+
+    // ─── Memoized context value (prevents unnecessary consumer rerenders) ───
+    const contextValue = useMemo(() => ({
+        socket,
+        onlineUsers,
+        typingUsers,
+        registerMessageHandler,
+        unregisterMessageHandler,
+        registerStatusHandler,
+        unregisterStatusHandler,
+        registerDeleteHandler,
+        unregisterDeleteHandler,
+        registerReadHandler,
+        unregisterReadHandler,
+        registerProfileUpdateHandler,
+        unregisterProfileUpdateHandler
+    }), [
+        socket,
+        onlineUsers,
+        typingUsers,
+        registerMessageHandler,
+        unregisterMessageHandler,
+        registerStatusHandler,
+        unregisterStatusHandler,
+        registerDeleteHandler,
+        unregisterDeleteHandler,
+        registerReadHandler,
+        unregisterReadHandler,
+        registerProfileUpdateHandler,
+        unregisterProfileUpdateHandler
+    ]);
 
     return (
-        <SocketContext.Provider value={{
-            socket,
-            onlineUsers,
-            typingUsers,
-            registerMessageHandler,
-            unregisterMessageHandler,
-            registerStatusHandler,
-            unregisterStatusHandler,
-            registerDeleteHandler,
-            unregisterDeleteHandler,
-            registerReadHandler,
-            unregisterReadHandler,
-            registerProfileUpdateHandler,
-            unregisterProfileUpdateHandler
-        }}>
+        <SocketContext.Provider value={contextValue}>
             {children}
         </SocketContext.Provider>
     );

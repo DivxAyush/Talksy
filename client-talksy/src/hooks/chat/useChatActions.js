@@ -101,8 +101,6 @@ export const useChatActions = (senderId, receiverId, setMessages, replyMsg, setR
     } catch (err) {
       console.log("[useChatActions] Send failed:", err.message);
       setMessages(prev => prev.map(m => (m.clientId === tempId) ? { ...m, status: "failed" } : m));
-      // Option: enqueue on failure? 
-      // If it's a 500 or timeout, we might want to enqueue it. Let's just leave it as failed for manual retry.
     } finally {
       setSending(false);
     }

@@ -5,6 +5,8 @@ import { mergeMessages } from "../../utils/chat/messageHelpers";
 import { getOfflineQueue } from "../../utils/chat/offlineQueue";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
+const PAGE_SIZE = 50;
+const MAX_READ_IDS = 1000;
 
 export const useChatMessages = (senderId, receiverId) => {
   const [messages, setMessages] = useState([]);
@@ -48,7 +50,7 @@ export const useChatMessages = (senderId, receiverId) => {
         return;
       }
 
-      let url = `${API}/${senderId}/${receiverId}?page=${pg}&limit=50`;
+      let url = `${API}/${senderId}/${receiverId}?page=${pg}&limit=${PAGE_SIZE}`;
       if (afterTimestamp) url += `&after=${encodeURIComponent(afterTimestamp)}`;
 
       const { data } = await axios.get(url);
@@ -73,10 +75,10 @@ export const useChatMessages = (senderId, receiverId) => {
           setPage(pg);
         }
 
-        // Memory Cleanup
-        if (processedReadIdsRef.current.size > 1000) {
+        // Memory Cleanup: Trim processedReadIds — keep most recent half
+        if (processedReadIdsRef.current.size > MAX_READ_IDS) {
           const arr = Array.from(processedReadIdsRef.current);
-          processedReadIdsRef.current = new Set(arr.slice(500));
+          processedReadIdsRef.current = new Set(arr.slice(arr.length - (MAX_READ_IDS / 2)));
         }
       }
     } catch (err) {

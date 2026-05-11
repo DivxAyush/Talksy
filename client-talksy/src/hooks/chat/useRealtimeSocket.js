@@ -45,21 +45,48 @@ export const useRealtimeSocket = (receiverId, setMessages, processedReadIdsRef) 
       }
     });
 
+    // ─── Optimized: Use Set for O(1) lookups instead of Array.includes O(n) ───
     registerStatusHandler((msgIdOrIds, status) => {
       const ids = Array.isArray(msgIdOrIds) ? msgIdOrIds : [msgIdOrIds];
-      setMessages(prev => prev.map(m => ids.includes(m._id) ? { ...m, status } : m));
+      const idSet = new Set(ids);
+      setMessages(prev => {
+        let changed = false;
+        const next = prev.map(m => {
+          if (idSet.has(m._id) && m.status !== status) {
+            changed = true;
+            return { ...m, status };
+          }
+          return m;
+        });
+        return changed ? next : prev; // Skip state update if nothing changed
+      });
     });
 
     registerDeleteHandler((msgId, forEveryone) => {
       if (forEveryone) {
-        setMessages(prev => prev.map(m => m._id === msgId ? { ...m, isDeleted: true, message: "This message was deleted" } : m));
+        setMessages(prev => {
+          const target = prev.find(m => m._id === msgId);
+          if (!target || target.isDeleted) return prev; // Already deleted — skip
+          return prev.map(m => m._id === msgId ? { ...m, isDeleted: true, message: "This message was deleted" } : m);
+        });
       } else {
         setMessages(prev => prev.filter(m => m._id !== msgId));
       }
     });
 
     registerReadHandler((msgIds, status) => {
-      setMessages(prev => prev.map(m => msgIds.includes(m._id) ? { ...m, status } : m));
+      const idSet = new Set(msgIds);
+      setMessages(prev => {
+        let changed = false;
+        const next = prev.map(m => {
+          if (idSet.has(m._id) && m.status !== status) {
+            changed = true;
+            return { ...m, status };
+          }
+          return m;
+        });
+        return changed ? next : prev; // Skip state update if nothing changed
+      });
     });
 
     return () => { 

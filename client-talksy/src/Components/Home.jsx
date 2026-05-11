@@ -2,13 +2,155 @@ import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } 
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     Platform, ActivityIndicator, Image, Modal, Animated, Pressable,
+    LayoutAnimation, UIManager
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { ThemeContext } from "../context/ThemeContext";
 import { SocketContext } from "../context/SocketContext";
 import { ChatContext } from "../context/ChatContext";
 import { useFocusEffect } from "@react-navigation/native";
+
+// ─── Module-level helpers (never recreated) ───
+const chatKeyExtractor = (item) => item._id;
+
+const formatChatTime = (dateStr) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now - date;
+    const oneDay = 86400000;
+
+    if (diff < oneDay && date.getDate() === now.getDate()) {
+        return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    if (diff < 2 * oneDay) return "Yesterday";
+    if (diff < 7 * oneDay) {
+        const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        return days[date.getDay()];
+    }
+    return date.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "2-digit" });
+};
+
+// ─── Extracted & Memoized StatusIcon ───
+const StatusIcon = React.memo(({ status, textSub }) => {
+    if (status === "read") {
+        return <Ionicons name="checkmark-done" size={16} color="#53bdeb" style={{ marginRight: 4 }} />;
+    }
+    if (status === "delivered") {
+        return <Ionicons name="checkmark-done" size={16} color={textSub} style={{ marginRight: 4 }} />;
+    }
+    return <Ionicons name="checkmark" size={16} color={textSub} style={{ marginRight: 4 }} />;
+});
+
+// ─── Extracted & Memoized ChatItem (was defined inside Home = recreated every render) ───
+const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, isDark, bg, textMain, textSub, border, accentGreen, isOnline }) => {
+    const conv = item.conversation;
+    const lastMsg = conv?.lastMessage;
+    const unreadCount = conv?.unreadCount || 0;
+    const hasUnread = unreadCount > 0;
+    const isSentByMe = lastMsg?.senderId === currentUserId;
+
+    let previewText = "Tap to start chatting...";
+    if (lastMsg) {
+        if (lastMsg.isDeleted) {
+            previewText = "🚫 This message was deleted";
+        } else if (lastMsg.messageType === "image") {
+            previewText = "📷 Photo";
+        } else if (lastMsg.messageType === "video") {
+            previewText = "🎥 Video";
+        } else if (lastMsg.messageType === "voice") {
+            previewText = "🎤 Voice message";
+        } else {
+            previewText = lastMsg.message;
+        }
+    }
+
+    return (
+        <TouchableOpacity
+            style={[s.chatItem, { borderBottomColor: border }]}
+            activeOpacity={0.6}
+            onPress={() => {
+                Haptics.selectionAsync();
+                navigation.navigate("chatUser", { user: item });
+            }}
+        >
+            <TouchableOpacity onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onProfilePress(item);
+            }} activeOpacity={0.8}>
+                <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                    {item?.profilePic ? (
+                        <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
+                    ) : (
+                        <Text style={s.avatarTxt}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
+                    )}
+                </View>
+                {isOnline && (
+                    <View style={[s.onlineDot, { borderColor: bg }]} />
+                )}
+            </TouchableOpacity>
+            <View style={s.chatInfo}>
+                <View style={s.chatHeader}>
+                    <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
+                        {item.name || item.username}
+                    </Text>
+                    <Text style={[
+                        s.chatTime,
+                        { color: hasUnread ? accentGreen : textSub }
+                    ]}>
+                        {lastMsg ? formatChatTime(lastMsg.createdAt) : ""}
+                    </Text>
+                </View>
+                <View style={s.previewRow}>
+                    <View style={s.previewTextWrap}>
+                        {isSentByMe && lastMsg && !lastMsg.isDeleted && (
+                            <StatusIcon status={lastMsg.status} textSub={textSub} />
+                        )}
+                        <Text
+                            style={[
+                                s.chatPreview,
+                                { color: hasUnread ? textMain : textSub },
+                                hasUnread && { fontWeight: "600" }
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {previewText}
+                        </Text>
+                    </View>
+                    {hasUnread && (
+                        <View style={s.unreadBadge}>
+                            <Text style={s.unreadTxt}>
+                                {unreadCount > 99 ? "99+" : unreadCount}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            </View>
+        </TouchableOpacity>
+    );
+}, (prev, next) => {
+    // Custom comparator: only rerender when visible data changes
+    const prevConv = prev.item.conversation;
+    const nextConv = next.item.conversation;
+    return (
+        prev.item._id === next.item._id &&
+        prev.isOnline === next.isOnline &&
+        prev.isDark === next.isDark &&
+        prevConv?.lastMessage?._id === nextConv?.lastMessage?._id &&
+        prevConv?.lastMessage?.status === nextConv?.lastMessage?.status &&
+        prevConv?.lastMessage?.message === nextConv?.lastMessage?.message &&
+        prevConv?.lastMessage?.isDeleted === nextConv?.lastMessage?.isDeleted &&
+        prevConv?.unreadCount === nextConv?.unreadCount &&
+        prev.item.name === next.item.name &&
+        prev.item.profilePic === next.item.profilePic
+    );
+});
 
 export default function Home({ navigation, setIsLoggedIn }) {
     const [search, setSearch] = useState("");
@@ -44,6 +186,11 @@ export default function Home({ navigation, setIsLoggedIn }) {
         })();
     }, []);
 
+    // Smooth reordering animation
+    useEffect(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }, [conversations]);
+
     // Smart fetch — only re-fetches if stale (>30s) thanks to ChatContext caching
     useFocusEffect(
         useCallback(() => {
@@ -65,146 +212,53 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 conversation: conv,
             }));
     }, [conversations]);
-    const filteredList = search
-        ? chatList.filter(u =>
-            u.username?.toLowerCase().includes(search.toLowerCase()) ||
-            u.name?.toLowerCase().includes(search.toLowerCase())
-        )
-        : chatList;
 
-    const handleSearch = (text) => {
+    const filteredList = useMemo(() => {
+        if (!search) return chatList;
+        const term = search.toLowerCase();
+        return chatList.filter(u =>
+            u.username?.toLowerCase().includes(term) ||
+            u.name?.toLowerCase().includes(term)
+        );
+    }, [chatList, search]);
+
+    const handleSearch = useCallback((text) => {
         setSearch(text);
-    };
+    }, []);
 
     // ─── Profile Popup ───
-    const showProfilePopup = (user) => {
+    const showProfilePopup = useCallback((user) => {
         setPopupUser(user);
         setPopupVisible(true);
         Animated.timing(popupAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    };
-    const hideProfilePopup = () => {
+    }, [popupAnim]);
+
+    const hideProfilePopup = useCallback(() => {
         Animated.timing(popupAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
             setPopupVisible(false);
             setPopupUser(null);
         });
-    };
+    }, [popupAnim]);
 
-    // ─── Format timestamp for chat list ───
-    const formatChatTime = (dateStr) => {
-        if (!dateStr) return "";
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now - date;
-        const oneDay = 86400000;
-
-        if (diff < oneDay && date.getDate() === now.getDate()) {
-            return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        }
-
-        if (diff < 2 * oneDay) return "Yesterday";
-
-        if (diff < 7 * oneDay) {
-            const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-            return days[date.getDay()];
-        }
-
-        return date.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "2-digit" });
-    };
-
-    // ─── Message status icon for sent messages ───
-    const StatusIcon = ({ status }) => {
-        if (status === "read") {
-            return <Ionicons name="checkmark-done" size={16} color="#53bdeb" style={{ marginRight: 4 }} />;
-        }
-        if (status === "delivered") {
-            return <Ionicons name="checkmark-done" size={16} color={textSub} style={{ marginRight: 4 }} />;
-        }
-        return <Ionicons name="checkmark" size={16} color={textSub} style={{ marginRight: 4 }} />;
-    };
-
-    const ChatItem = ({ item }) => {
-        const conv = item.conversation;
-        const lastMsg = conv?.lastMessage;
-        const unreadCount = conv?.unreadCount || 0;
-        const hasUnread = unreadCount > 0;
-        const isSentByMe = lastMsg?.senderId === currentUserId;
-
-        let previewText = "Tap to start chatting...";
-        if (lastMsg) {
-            if (lastMsg.isDeleted) {
-                previewText = "🚫 This message was deleted";
-            } else if (lastMsg.messageType === "image") {
-                previewText = "📷 Photo";
-            } else if (lastMsg.messageType === "video") {
-                previewText = "🎥 Video";
-            } else if (lastMsg.messageType === "voice") {
-                previewText = "🎤 Voice message";
-            } else {
-                previewText = lastMsg.message;
-            }
-        }
-
-        return (
-            <TouchableOpacity
-                style={[s.chatItem, { borderBottomColor: border }]}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate("chatUser", { user: item })}
-            >
-                <TouchableOpacity onPress={() => showProfilePopup(item)} activeOpacity={0.8}>
-                    <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
-                        {item?.profilePic ? (
-                            <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
-                        ) : (
-                            <Text style={s.avatarTxt}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
-                        )}
-                    </View>
-                    {onlineUsers.includes(item._id) && (
-                        <View style={[s.onlineDot, { borderColor: bg }]} />
-                    )}
-                </TouchableOpacity>
-                <View style={s.chatInfo}>
-                    <View style={s.chatHeader}>
-                        <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
-                            {item.name || item.username}
-                        </Text>
-                        <Text style={[
-                            s.chatTime,
-                            { color: hasUnread ? accentGreen : textSub }
-                        ]}>
-                            {lastMsg ? formatChatTime(lastMsg.createdAt) : ""}
-                        </Text>
-                    </View>
-                    <View style={s.previewRow}>
-                        <View style={s.previewTextWrap}>
-                            {isSentByMe && lastMsg && !lastMsg.isDeleted && (
-                                <StatusIcon status={lastMsg.status} />
-                            )}
-                            <Text
-                                style={[
-                                    s.chatPreview,
-                                    { color: hasUnread ? textMain : textSub },
-                                    hasUnread && { fontWeight: "600" }
-                                ]}
-                                numberOfLines={1}
-                            >
-                                {previewText}
-                            </Text>
-                        </View>
-                        {hasUnread && (
-                            <View style={s.unreadBadge}>
-                                <Text style={s.unreadTxt}>
-                                    {unreadCount > 99 ? "99+" : unreadCount}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </View>
-            </TouchableOpacity>
-        );
-    };
+    // ─── Memoized renderItem for FlatList ───
+    const renderChatItem = useCallback(({ item }) => (
+        <ChatItem
+            item={item}
+            currentUserId={currentUserId}
+            navigation={navigation}
+            onProfilePress={showProfilePopup}
+            isDark={isDark}
+            bg={bg}
+            textMain={textMain}
+            textSub={textSub}
+            border={border}
+            accentGreen={accentGreen}
+            isOnline={onlineUsers.includes(item._id)}
+        />
+    ), [currentUserId, navigation, showProfilePopup, isDark, bg, textMain, textSub, border, accentGreen, onlineUsers]);
 
     // ─── Empty State for No Conversations ───
-    const EmptyConversations = () => (
+    const EmptyConversations = useMemo(() => (
         <View style={s.emptyWrap}>
             <View style={[s.emptyIconBg, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
                 <Ionicons name="chatbubbles-outline" size={52} color={isDark ? "#3b5360" : "#c8d6db"} />
@@ -222,8 +276,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 <Text style={s.startChatBtnTxt}>Start a Chat</Text>
             </TouchableOpacity>
         </View>
-    );
-
+    ), [isDark, textMain, textSub, accentPurple, navigation]);
 
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
@@ -259,11 +312,17 @@ export default function Home({ navigation, setIsLoggedIn }) {
             ) : (
                 <FlatList
                     data={filteredList}
-                    keyExtractor={(item) => item._id}
-                    renderItem={({ item }) => <ChatItem item={item} />}
+                    keyExtractor={chatKeyExtractor}
+                    renderItem={renderChatItem}
                     contentContainerStyle={[s.listContent, filteredList.length === 0 && { flex: 1 }]}
                     showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={<EmptyConversations />}
+                    ListEmptyComponent={EmptyConversations}
+                    // ─── Virtualization Tuning ───
+                    windowSize={7}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={6}
+                    updateCellsBatchingPeriod={50}
+                    removeClippedSubviews={Platform.OS === "android"}
                 />
             )}
 
@@ -325,7 +384,6 @@ const s = StyleSheet.create({
     listContent: { paddingBottom: 100 },
     chatItem: {
         flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 20,
-        borderBottomWidth: 1,
     },
     avatar: {
         width: 50, height: 50, borderRadius: 25,
@@ -342,7 +400,7 @@ const s = StyleSheet.create({
     chatTime: { fontSize: 12 },
     previewRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     previewTextWrap: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
-    chatPreview: { fontSize: 14, flex: 1 },
+    chatPreview: { fontSize: 14.5, flex: 1, lineHeight: 20 },
 
     // Unread Badge
     unreadBadge: {
@@ -387,4 +445,3 @@ const s = StyleSheet.create({
     popupAbout: { fontSize: 14, marginTop: 4, textAlign: "center", paddingHorizontal: 16 },
 
 });
-

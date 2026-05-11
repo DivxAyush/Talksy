@@ -1,5 +1,8 @@
-// ─── Centralized Message Merge Utility (Optimized) ───
+// ─── Centralized Message Merge Utility (Optimized with Set-based dedup) ───
 export const mergeMessages = (prev, incoming, isAppend = false) => {
+  if (!incoming || incoming.length === 0) return prev;
+  if (!prev || prev.length === 0) return incoming;
+
   const mergedMap = new Map();
   
   if (isAppend) {

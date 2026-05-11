@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-const ChatHeader = ({ 
+const ChatHeader = React.memo(({ 
   navigation, 
   displayName, 
   displayPic, 
@@ -52,7 +52,19 @@ const ChatHeader = ({
       </View>
     </View>
   );
-};
+}, (prev, next) => {
+  return (
+    prev.displayName === next.displayName &&
+    prev.displayPic === next.displayPic &&
+    prev.isOnline === next.isOnline &&
+    prev.isReceiverTyping === next.isReceiverTyping &&
+    prev.isDark === next.isDark &&
+    prev.textMain === next.textMain &&
+    prev.textSub === next.textSub &&
+    prev.headerBg === next.headerBg &&
+    prev.border === next.border
+  );
+});
 
 const s = StyleSheet.create({
   header: {

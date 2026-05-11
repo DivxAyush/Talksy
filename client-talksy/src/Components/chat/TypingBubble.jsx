@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Animated, StyleSheet } from "react-native";
 
-const TypingBubble = ({ otherBubble, dot1, dot2, dot3, textSub }) => {
+const TypingBubble = React.memo(({ otherBubble, dot1, dot2, dot3, textSub }) => {
   return (
     <View style={[s.bubbleWrap, s.bubbleLeft]}>
       <View style={[s.bubble, { backgroundColor: otherBubble, flexDirection: "row", paddingHorizontal: 18, paddingVertical: 14 }]}>
@@ -11,7 +11,7 @@ const TypingBubble = ({ otherBubble, dot1, dot2, dot3, textSub }) => {
       </View>
     </View>
   );
-};
+});
 
 const s = StyleSheet.create({
   bubbleWrap: { marginBottom: 6, maxWidth: "78%", alignSelf: "flex-start" },

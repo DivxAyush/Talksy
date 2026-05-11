@@ -1,27 +1,90 @@
-import React from "react";
-import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
+import React, { useRef } from "react";
+import { View, Text, TouchableOpacity, Image, StyleSheet, Animated, PanResponder } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { formatTime } from "../../utils/chat/formatters";
 import StatusTicks from "./StatusTicks";
 import VoicePlayer from "./VoicePlayer";
 
-const MessageBubble = React.memo(({ item, senderId, displayName, myBubble, otherBubble, myBubbleTxt, otherBubbleTxt, accentPurple, textSub, onLongPress, onPressMedia }) => {
+const formatDateHeader = (dateStr) => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now - date;
+  const oneDay = 86400000;
+  if (diff < oneDay && date.getDate() === now.getDate()) return "Today";
+  if (diff < 2 * oneDay && date.getDate() === new Date(now - oneDay).getDate()) return "Yesterday";
+  return date.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+};
+
+const MessageBubble = React.memo(({ 
+  item, senderId, displayName, myBubble, otherBubble, myBubbleTxt, otherBubbleTxt, 
+  accentPurple, textSub, onLongPress, onPressMedia, 
+  isGroupedStart, isGroupedEnd, showDate, onSwipeToReply 
+}) => {
   const isMe = item.senderId === senderId;
   const deleted = item.isDeleted;
   const isMedia = item.messageType && item.messageType !== "text";
 
-  return (
-    <TouchableOpacity
-      style={[s.bubbleWrap, isMe ? s.bubbleRight : s.bubbleLeft]}
-      onLongPress={() => !deleted && onLongPress(item)}
-      onPress={() => {
-        if (isMedia && !deleted) {
-          onPressMedia(item);
+  // Swipe to reply logic
+  const panX = useRef(new Animated.Value(0)).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only allow horizontal swipe to right
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && gestureState.dx > 0 && !deleted;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx > 0) {
+          panX.setValue(Math.min(gestureState.dx, 60)); // Max swipe distance 60
         }
-      }}
-      activeOpacity={0.8}
-      disabled={deleted && !isMedia}
-    >
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > 40) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onSwipeToReply(item);
+        }
+        Animated.spring(panX, {
+          toValue: 0,
+          useNativeDriver: true,
+          bounciness: 10
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(panX, { toValue: 0, useNativeDriver: true }).start();
+      }
+    })
+  ).current;
+
+  return (
+    <View style={s.container}>
+      {showDate && (
+        <View style={s.dateHeaderWrap}>
+          <Text style={[s.dateHeaderTxt, { backgroundColor: myBubble, color: myBubbleTxt }]}>
+            {formatDateHeader(item.createdAt)}
+          </Text>
+        </View>
+      )}
+      
+      <Animated.View style={{ transform: [{ translateX: panX }] }} {...panResponder.panHandlers}>
+        <View style={s.replyIconWrap}>
+          <Ionicons name="arrow-undo" size={20} color={textSub} style={{ opacity: 0.5 }} />
+        </View>
+        <TouchableOpacity
+          style={[
+            s.bubbleWrap, 
+            isMe ? s.bubbleRight : s.bubbleLeft,
+            isGroupedEnd ? { marginBottom: 2 } : { marginBottom: 12 }
+          ]}
+          onLongPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (!deleted) onLongPress(item);
+          }}
+          onPress={() => {
+            if (isMedia && !deleted) onPressMedia(item);
+          }}
+          activeOpacity={0.8}
+          disabled={deleted && !isMedia}
+        >
       {/* Reply reference */}
       {item.replyToMessage && !deleted && (
         <View style={[s.replyRef, { backgroundColor: isMe ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)", borderLeftColor: isMe ? "#53bdeb" : "#25D366" }]}>
@@ -36,8 +99,10 @@ const MessageBubble = React.memo(({ item, senderId, displayName, myBubble, other
 
       <View style={[
         s.bubble,
-        isMe ? { backgroundColor: myBubble, borderBottomRightRadius: 4 } : { backgroundColor: otherBubble, borderBottomLeftRadius: 4 },
-        isMedia && { padding: 4, borderRadius: 12 }
+        isMe ? { backgroundColor: myBubble } : { backgroundColor: otherBubble },
+        isMe ? { borderBottomRightRadius: isGroupedEnd ? 18 : 4, borderTopRightRadius: isGroupedStart ? 18 : 4, borderTopLeftRadius: 18, borderBottomLeftRadius: 18 } : 
+               { borderBottomLeftRadius: isGroupedEnd ? 18 : 4, borderTopLeftRadius: isGroupedStart ? 18 : 4, borderTopRightRadius: 18, borderBottomRightRadius: 18 },
+        isMedia && { padding: 4, borderRadius: 16 }
       ]}>
         {deleted ? (
           <Text style={[s.deletedTxt, { color: isMe ? "rgba(255,255,255,0.5)" : textSub }, { paddingHorizontal: 10, paddingVertical: 4 }]}>
@@ -47,12 +112,12 @@ const MessageBubble = React.memo(({ item, senderId, displayName, myBubble, other
           <>
             {item.messageType === "image" && (
               <View style={s.mediaContainer}>
-                <Image source={{ uri: item.mediaUrl }} style={s.bubbleImage} />
+                <Image source={{ uri: item.mediaUrl }} style={s.bubbleImage} cachePolicy="disk" />
               </View>
             )}
             {item.messageType === "video" && (
               <View style={s.mediaContainer}>
-                <Image source={{ uri: item.mediaThumbnail || item.mediaUrl }} style={s.bubbleImage} />
+                <Image source={{ uri: item.mediaThumbnail || item.mediaUrl }} style={s.bubbleImage} cachePolicy="disk" />
                 <View style={s.playOverlay}>
                   <Ionicons name="play" size={32} color="#fff" />
                 </View>
@@ -76,15 +141,37 @@ const MessageBubble = React.memo(({ item, senderId, displayName, myBubble, other
         </View>
       </View>
     </TouchableOpacity>
+    </Animated.View>
+  </View>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparator: skip rerender if message data hasn't changed
+  // Callbacks (onLongPress, onPressMedia) are intentionally excluded —
+  // they use the item from closure, so stale refs are safe here
+  return (
+    prevProps.item._id === nextProps.item._id &&
+    prevProps.item.clientId === nextProps.item.clientId &&
+    prevProps.item.status === nextProps.item.status &&
+    prevProps.item.isDeleted === nextProps.item.isDeleted &&
+    prevProps.item.message === nextProps.item.message &&
+    prevProps.item.mediaUrl === nextProps.item.mediaUrl &&
+    prevProps.senderId === nextProps.senderId &&
+    prevProps.isGroupedStart === nextProps.isGroupedStart &&
+    prevProps.isGroupedEnd === nextProps.isGroupedEnd &&
+    prevProps.showDate === nextProps.showDate
   );
 });
 
 const s = StyleSheet.create({
-  bubbleWrap: { marginBottom: 6, maxWidth: "78%" },
+  container: { width: "100%" },
+  dateHeaderWrap: { alignItems: "center", marginVertical: 16 },
+  dateHeaderTxt: { fontSize: 12, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: "hidden" },
+  replyIconWrap: { position: "absolute", left: -40, top: "50%", marginTop: -10, width: 30, height: 30, justifyContent: "center", alignItems: "center" },
+  bubbleWrap: { maxWidth: "80%" },
   bubbleRight: { alignSelf: "flex-end" },
   bubbleLeft: { alignSelf: "flex-start" },
-  bubble: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 4, borderRadius: 18 },
-  bubbleTxt: { fontSize: 15, lineHeight: 20 },
+  bubble: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8 },
+  bubbleTxt: { fontSize: 15.5, lineHeight: 22 },
   deletedTxt: { fontSize: 14, fontStyle: "italic" },
   metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", marginTop: 2 },
   timeTxt: { fontSize: 11 },

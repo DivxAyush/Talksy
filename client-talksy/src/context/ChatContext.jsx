@@ -1,9 +1,12 @@
-import React, { createContext, useState, useCallback, useRef } from "react";
+import React, { createContext, useState, useCallback, useRef, useMemo } from "react";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setActiveChat as setNotificationActiveChat, dismissChatNotifications } from "../utils/notificationService";
 
 const API = "https://talksy-3py1.onrender.com/api/messages";
 const CACHE_TTL = 30000; // 30 seconds before re-fetch allowed
+const MAX_CACHED_CONVERSATIONS = 50; // Limit cached conversation count
+const MAX_MESSAGES_PER_CHAT = 500; // Prevent memory growth
 
 export const ChatContext = createContext();
 
@@ -17,6 +20,23 @@ export const ChatProvider = ({ children }) => {
     // ─── Per-conversation message cache ───
     // Structure: { [conversationKey]: { messages: [], page: 1, hasMore: false, lastFetchTime: 0 } }
     const messagesCacheRef = useRef({});
+
+    // ─── Debounced AsyncStorage write for message cache ───
+    const saveCacheTimerRef = useRef(null);
+    const debouncedSaveMessageCache = useCallback(() => {
+        if (saveCacheTimerRef.current) clearTimeout(saveCacheTimerRef.current);
+        saveCacheTimerRef.current = setTimeout(() => {
+            // Trim cache before persisting: keep only most recent conversations
+            const cache = messagesCacheRef.current;
+            const keys = Object.keys(cache);
+            if (keys.length > MAX_CACHED_CONVERSATIONS) {
+                const sorted = keys.sort((a, b) => (cache[b].lastFetchTime || 0) - (cache[a].lastFetchTime || 0));
+                const toRemove = sorted.slice(MAX_CACHED_CONVERSATIONS);
+                toRemove.forEach(k => delete cache[k]);
+            }
+            AsyncStorage.setItem("talksy_messages", JSON.stringify(cache)).catch(() => {});
+        }, 3000); // 3s debounce — batches rapid updates
+    }, []);
 
     // ─── Load Offline Cache on Startup ───
     React.useEffect(() => {
@@ -34,15 +54,22 @@ export const ChatProvider = ({ children }) => {
             } catch (err) { console.log("Failed to load cache", err); }
         };
         loadCache();
-    }, []);
 
-    const saveMessageCache = () => {
-        AsyncStorage.setItem("talksy_messages", JSON.stringify(messagesCacheRef.current)).catch(() => {});
-    };
+        // Cleanup debounce timer on unmount
+        return () => {
+            if (saveCacheTimerRef.current) clearTimeout(saveCacheTimerRef.current);
+        };
+    }, []);
 
     // Set which chat is currently being viewed
     const setCurrentChat = useCallback((userId) => {
         currentChatRef.current = userId;
+        // Sync with notification service to suppress notifications for this chat
+        setNotificationActiveChat(userId);
+        // Clear any existing notifications for this chat when opened
+        if (userId) {
+            dismissChatNotifications(userId);
+        }
     }, []);
 
     const getCurrentChat = useCallback(() => {
@@ -102,15 +129,15 @@ export const ChatProvider = ({ children }) => {
 
         const finalMessages = Array.from(mergedMap.values())
             .sort((a, b) => new Date(b.createdAt || Date.now()) - new Date(a.createdAt || Date.now()))
-            .slice(0, 500); // Prevent memory growth: keep last 500 messages per chat
+            .slice(0, MAX_MESSAGES_PER_CHAT);
 
         messagesCacheRef.current[key] = {
             ...cached,
             messages: finalMessages,
             lastFetchTime: Date.now()
         };
-        saveMessageCache();
-    }, []);
+        debouncedSaveMessageCache();
+    }, [debouncedSaveMessageCache]);
 
     const getCachedMessages = useCallback((senderId, receiverId) => {
         const key = getCacheKey(senderId, receiverId);
@@ -123,8 +150,8 @@ export const ChatProvider = ({ children }) => {
             ...data,
             lastFetchTime: Date.now(),
         };
-        saveMessageCache();
-    }, []);
+        debouncedSaveMessageCache();
+    }, [debouncedSaveMessageCache]);
 
     const addMessageToCache = useCallback((senderId, receiverId, message) => {
         syncMessageToCache(senderId, receiverId, message);
@@ -178,6 +205,7 @@ export const ChatProvider = ({ children }) => {
         setConversations(prev =>
             prev.map(conv => {
                 if (conv._id === otherUserId || conv.userInfo?._id === otherUserId) {
+                    if (conv.unreadCount === 0) return conv; // Skip if already zero (no new object)
                     return { ...conv, unreadCount: 0 };
                 }
                 return conv;
@@ -190,6 +218,7 @@ export const ChatProvider = ({ children }) => {
         setConversations(prev =>
             prev.map(conv => {
                 if (conv.lastMessage?._id === messageId) {
+                    if (conv.lastMessage.status === status) return conv; // Skip if already same status
                     return {
                         ...conv,
                         lastMessage: { ...conv.lastMessage, status }
@@ -217,6 +246,7 @@ export const ChatProvider = ({ children }) => {
 
     // ─── Centralized Audio Service ───
     const [activeAudioId, setActiveAudioId] = useState(null);
+    const activeAudioIdRef = useRef(null); // Ref to avoid stale closure in playAudio
     const audioServiceRef = useRef({
         activeSound: null,
         playbackStatusUpdate: null,
@@ -229,6 +259,7 @@ export const ChatProvider = ({ children }) => {
                 await svc.activeSound.unloadAsync();
             } catch (err) { /* ignore cleanup errors */ }
             svc.activeSound = null;
+            activeAudioIdRef.current = null;
             setActiveAudioId(null);
             if (svc.playbackStatusUpdate) svc.playbackStatusUpdate({ isPlaying: false, positionMillis: 0 });
         }
@@ -236,7 +267,8 @@ export const ChatProvider = ({ children }) => {
 
     const playAudio = useCallback(async (uri, id, onStatusUpdate) => {
         const svc = audioServiceRef.current;
-        if (activeAudioId !== id) await stopAudio();
+        // Use ref instead of state to avoid stale closure
+        if (activeAudioIdRef.current !== id) await stopAudio();
 
         if (!svc.activeSound) {
             try {
@@ -250,6 +282,7 @@ export const ChatProvider = ({ children }) => {
                     }
                 );
                 svc.activeSound = sound;
+                activeAudioIdRef.current = id;
                 setActiveAudioId(id);
             } catch (err) {
                 console.log("Audio play error:", err);
@@ -259,33 +292,54 @@ export const ChatProvider = ({ children }) => {
             await svc.activeSound.playAsync();
         }
         svc.playbackStatusUpdate = onStatusUpdate;
-    }, [stopAudio, activeAudioId]);
+    }, [stopAudio]);
 
     const pauseAudio = useCallback(async () => {
         const svc = audioServiceRef.current;
         if (svc.activeSound) await svc.activeSound.pauseAsync();
     }, []);
 
+    // ─── Memoized context value (prevents all consumers from rerendering on unrelated state changes) ───
+    const contextValue = useMemo(() => ({
+        conversations,
+        loadingConversations,
+        fetchConversations,
+        updateConversationWithMessage,
+        clearUnreadCount,
+        updateConversationMessageStatus,
+        updateUserProfileInConversations,
+        setCurrentChat,
+        getCurrentChat,
+        getCachedMessages,
+        setCachedMessages,
+        addMessageToCache,
+        syncMessageToCache,
+        playAudio,
+        pauseAudio,
+        stopAudio,
+        activeAudioId
+    }), [
+        conversations,
+        loadingConversations,
+        fetchConversations,
+        updateConversationWithMessage,
+        clearUnreadCount,
+        updateConversationMessageStatus,
+        updateUserProfileInConversations,
+        setCurrentChat,
+        getCurrentChat,
+        getCachedMessages,
+        setCachedMessages,
+        addMessageToCache,
+        syncMessageToCache,
+        playAudio,
+        pauseAudio,
+        stopAudio,
+        activeAudioId
+    ]);
+
     return (
-        <ChatContext.Provider value={{
-            conversations,
-            loadingConversations,
-            fetchConversations,
-            updateConversationWithMessage,
-            clearUnreadCount,
-            updateConversationMessageStatus,
-            updateUserProfileInConversations,
-            setCurrentChat,
-            getCurrentChat,
-            getCachedMessages,
-            setCachedMessages,
-            addMessageToCache,
-            syncMessageToCache,
-            playAudio,
-            pauseAudio,
-            stopAudio,
-            activeAudioId
-        }}>
+        <ChatContext.Provider value={contextValue}>
             {children}
         </ChatContext.Provider>
     );
