@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ChatContext } from "../../context/ChatContext";
 import { formatDuration } from "../../utils/chat/formatters";
+import { spacing, radius, bubble } from "../../theme/designTokens";
 
 const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
   const { playAudio, pauseAudio, activeAudioId } = useContext(ChatContext);
@@ -54,17 +55,45 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
     } catch (err) { console.log("Voice play error:", err); }
   }, [isPlaying, isActive, pauseAudio, playAudio, item.mediaUrl, item._id, onStatusUpdate]);
 
+  // Generate waveform bars (visual only, deterministic from message ID)
+  const bars = useRef(
+    Array.from({ length: 20 }, (_, i) => {
+      const hash = ((item._id || "").charCodeAt(i % (item._id || "x").length) * 7 + i * 13) % 100;
+      return 4 + (hash / 100) * 14;
+    })
+  ).current;
+
   return (
     <View style={s.voiceBubble}>
-      <TouchableOpacity onPress={handleTogglePlay} style={[s.playBtn, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : "rgba(168,85,247,0.1)" }]}>
-        <Ionicons name={isPlaying ? "pause" : "play"} size={20} color={isMe ? "#fff" : accentPurple} />
+      <TouchableOpacity
+        onPress={handleTogglePlay}
+        style={[s.playBtn, { backgroundColor: isMe ? "rgba(255,255,255,0.18)" : "rgba(168,85,247,0.1)" }]}
+        activeOpacity={0.6}
+      >
+        <Ionicons name={isPlaying ? "pause" : "play"} size={18} color={isMe ? "#fff" : accentPurple} style={!isPlaying && { marginLeft: 2 }} />
       </TouchableOpacity>
       <View style={s.voiceInfo}>
+        {/* Waveform visualization */}
         <View style={s.waveform}>
-          <View style={[s.progressLine, { width: `${progress * 100}%`, backgroundColor: isMe ? "#fff" : accentPurple }]} />
-          <View style={[s.bgLine, { backgroundColor: isMe ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.05)" }]} />
+          {bars.map((h, i) => {
+            const isPlayed = progress > 0 && i / bars.length <= progress;
+            return (
+              <View
+                key={i}
+                style={[
+                  s.waveBar,
+                  {
+                    height: h,
+                    backgroundColor: isPlayed
+                      ? (isMe ? "#fff" : accentPurple)
+                      : (isMe ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.08)"),
+                  },
+                ]}
+              />
+            );
+          })}
         </View>
-        <Text style={[s.voiceDuration, { color: isMe ? "rgba(255,255,255,0.7)" : textSub }]}>
+        <Text style={[s.voiceDuration, { color: isMe ? "rgba(255,255,255,0.65)" : textSub }]}>
           {formatDuration(duration)}
         </Text>
       </View>
@@ -83,13 +112,37 @@ const VoicePlayer = React.memo(({ item, isMe, accentPurple, textSub }) => {
 });
 
 const s = StyleSheet.create({
-  voiceBubble: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 8, gap: 10, width: 200 },
-  playBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
-  voiceInfo: { flex: 1, gap: 6 },
-  waveform: { height: 4, justifyContent: "center" },
-  bgLine: { ...StyleSheet.absoluteFillObject, height: 4, borderRadius: 2 },
-  progressLine: { height: 4, borderRadius: 2, zIndex: 1 },
-  voiceDuration: { fontSize: 11 },
+  voiceBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm + 2,
+    width: bubble.voiceWidth,
+  },
+  playBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  voiceInfo: { flex: 1, gap: spacing.xs + 2 },
+  waveform: {
+    height: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 1.5,
+  },
+  waveBar: {
+    flex: 1,
+    borderRadius: 1,
+    minWidth: 2,
+  },
+  voiceDuration: {
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+  },
 });
 
 export default VoicePlayer;

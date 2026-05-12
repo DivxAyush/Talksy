@@ -2,7 +2,7 @@ import React, { useEffect, useState, useContext, useCallback, useMemo, useRef } 
 import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
     Platform, ActivityIndicator, Image, Modal, Animated, Pressable,
-    LayoutAnimation, UIManager
+    LayoutAnimation, UIManager, StatusBar
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -15,6 +15,9 @@ import { ThemeContext } from "../context/ThemeContext";
 import { SocketContext } from "../context/SocketContext";
 import { ChatContext } from "../context/ChatContext";
 import { useFocusEffect } from "@react-navigation/native";
+import { useThemeColors } from "../hooks/chat/useThemeColors";
+import { spacing, radius, typography, shadows, iconSize, avatarSize } from "../theme/designTokens";
+import { ChatListSkeleton } from "./chat/SkeletonLoader";
 
 // ─── Module-level helpers (never recreated) ───
 const chatKeyExtractor = (item) => item._id;
@@ -38,18 +41,18 @@ const formatChatTime = (dateStr) => {
 };
 
 // ─── Extracted & Memoized StatusIcon ───
-const StatusIcon = React.memo(({ status, textSub }) => {
+const StatusIcon = React.memo(({ status, tickRead, textTertiary }) => {
     if (status === "read") {
-        return <Ionicons name="checkmark-done" size={16} color="#53bdeb" style={{ marginRight: 4 }} />;
+        return <Ionicons name="checkmark-done" size={16} color={tickRead} style={{ marginRight: 4 }} />;
     }
     if (status === "delivered") {
-        return <Ionicons name="checkmark-done" size={16} color={textSub} style={{ marginRight: 4 }} />;
+        return <Ionicons name="checkmark-done" size={16} color={textTertiary} style={{ marginRight: 4 }} />;
     }
-    return <Ionicons name="checkmark" size={16} color={textSub} style={{ marginRight: 4 }} />;
+    return <Ionicons name="checkmark" size={16} color={textTertiary} style={{ marginRight: 4 }} />;
 });
 
-// ─── Extracted & Memoized ChatItem (was defined inside Home = recreated every render) ───
-const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, isDark, bg, textMain, textSub, border, accentGreen, isOnline }) => {
+// ─── Extracted & Memoized ChatItem ───
+const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, isDark, bg, textPrimary, textSecondary, textTertiary, border, unreadBg, unreadText, tickRead, isOnline, accent }) => {
     const conv = item.conversation;
     const lastMsg = conv?.lastMessage;
     const unreadCount = conv?.unreadCount || 0;
@@ -73,7 +76,7 @@ const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, 
 
     return (
         <TouchableOpacity
-            style={[s.chatItem, { borderBottomColor: border }]}
+            style={[s.chatItem]}
             activeOpacity={0.6}
             onPress={() => {
                 Haptics.selectionAsync();
@@ -84,25 +87,25 @@ const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, 
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onProfilePress(item);
             }} activeOpacity={0.8}>
-                <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                <View style={[s.avatar, { backgroundColor: isDark ? "#2C2C2E" : "#F1D7D1" }]}>
                     {item?.profilePic ? (
-                        <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 25 }} />
+                        <Image source={{ uri: item.profilePic }} style={{ width: "100%", height: "100%", borderRadius: radius.avatar.lg }} />
                     ) : (
-                        <Text style={s.avatarTxt}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
+                        <Text style={[s.avatarTxt, { color: isDark ? "#FFFFFF" : "#C4734A" }]}>{item?.username?.charAt(0)?.toUpperCase()}</Text>
                     )}
                 </View>
                 {isOnline && (
-                    <View style={[s.onlineDot, { borderColor: bg }]} />
+                    <View style={[s.onlineDot, { borderColor: bg, backgroundColor: accent }]} />
                 )}
             </TouchableOpacity>
-            <View style={s.chatInfo}>
+            <View style={[s.chatInfo, { borderBottomColor: border, borderBottomWidth: 0.5 }]}>
                 <View style={s.chatHeader}>
-                    <Text style={[s.chatName, { color: textMain }]} numberOfLines={1}>
+                    <Text style={[s.chatName, { color: textPrimary }]} numberOfLines={1}>
                         {item.name || item.username}
                     </Text>
                     <Text style={[
                         s.chatTime,
-                        { color: hasUnread ? accentGreen : textSub }
+                        { color: hasUnread ? unreadBg : textTertiary }
                     ]}>
                         {lastMsg ? formatChatTime(lastMsg.createdAt) : ""}
                     </Text>
@@ -110,12 +113,12 @@ const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, 
                 <View style={s.previewRow}>
                     <View style={s.previewTextWrap}>
                         {isSentByMe && lastMsg && !lastMsg.isDeleted && (
-                            <StatusIcon status={lastMsg.status} textSub={textSub} />
+                            <StatusIcon status={lastMsg.status} tickRead={tickRead} textTertiary={textTertiary} />
                         )}
                         <Text
                             style={[
                                 s.chatPreview,
-                                { color: hasUnread ? textMain : textSub },
+                                { color: hasUnread ? textPrimary : textSecondary },
                                 hasUnread && { fontWeight: "600" }
                             ]}
                             numberOfLines={1}
@@ -124,8 +127,8 @@ const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, 
                         </Text>
                     </View>
                     {hasUnread && (
-                        <View style={s.unreadBadge}>
-                            <Text style={s.unreadTxt}>
+                        <View style={[s.unreadBadge, { backgroundColor: unreadBg }]}>
+                            <Text style={[s.unreadTxt, { color: unreadText }]}>
                                 {unreadCount > 99 ? "99+" : unreadCount}
                             </Text>
                         </View>
@@ -135,7 +138,6 @@ const ChatItem = React.memo(({ item, currentUserId, navigation, onProfilePress, 
         </TouchableOpacity>
     );
 }, (prev, next) => {
-    // Custom comparator: only rerender when visible data changes
     const prevConv = prev.item.conversation;
     const nextConv = next.item.conversation;
     return (
@@ -170,14 +172,8 @@ export default function Home({ navigation, setIsLoggedIn }) {
         setCurrentChat
     } = useContext(ChatContext);
 
-    // Dynamic Theme Colors
-    const bg = isDark ? "#111b21" : "#fff";
-    const surface = isDark ? "#202c33" : "#f5f5f5";
-    const textMain = isDark ? "#e9edef" : "#1a1a2e";
-    const textSub = isDark ? "#8696a0" : "#666";
-    const border = isDark ? "#202c33" : "#f0f0f0";
-    const accentPurple = "#5B5FC7";
-    const accentGreen = "#25D366";
+    const colors = useThemeColors();
+    const { bg, surface, textPrimary, textSecondary, textTertiary, border, unreadBg, unreadText, tickRead, accent } = colors;
 
     useEffect(() => {
         (async () => {
@@ -191,15 +187,13 @@ export default function Home({ navigation, setIsLoggedIn }) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }, [conversations]);
 
-    // Smart fetch — only re-fetches if stale (>30s) thanks to ChatContext caching
     useFocusEffect(
         useCallback(() => {
-            setCurrentChat(null); // Not in any chat
-            fetchConversations(); // Will skip if cache is fresh
+            setCurrentChat(null);
+            fetchConversations();
         }, [])
     );
 
-    // ─── Build chat list directly from conversations (no separate users API call) ───
     const chatList = useMemo(() => {
         return conversations
             .filter(conv => conv.lastMessage)
@@ -226,7 +220,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
         setSearch(text);
     }, []);
 
-    // ─── Profile Popup ───
     const showProfilePopup = useCallback((user) => {
         setPopupUser(user);
         setPopupVisible(true);
@@ -240,7 +233,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
         });
     }, [popupAnim]);
 
-    // ─── Memoized renderItem for FlatList ───
     const renderChatItem = useCallback(({ item }) => (
         <ChatItem
             item={item}
@@ -249,26 +241,29 @@ export default function Home({ navigation, setIsLoggedIn }) {
             onProfilePress={showProfilePopup}
             isDark={isDark}
             bg={bg}
-            textMain={textMain}
-            textSub={textSub}
+            textPrimary={textPrimary}
+            textSecondary={textSecondary}
+            textTertiary={textTertiary}
             border={border}
-            accentGreen={accentGreen}
+            unreadBg={unreadBg}
+            unreadText={unreadText}
+            tickRead={tickRead}
             isOnline={onlineUsers.includes(item._id)}
+            accent={accent}
         />
-    ), [currentUserId, navigation, showProfilePopup, isDark, bg, textMain, textSub, border, accentGreen, onlineUsers]);
+    ), [currentUserId, navigation, showProfilePopup, isDark, bg, textPrimary, textSecondary, textTertiary, border, unreadBg, unreadText, tickRead, onlineUsers, accent]);
 
-    // ─── Empty State for No Conversations ───
     const EmptyConversations = useMemo(() => (
         <View style={s.emptyWrap}>
-            <View style={[s.emptyIconBg, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
-                <Ionicons name="chatbubbles-outline" size={52} color={isDark ? "#3b5360" : "#c8d6db"} />
+            <View style={[s.emptyIconBg, { backgroundColor: isDark ? "#1C1C1E" : "#F1D7D1" }]}>
+                <Ionicons name="chatbubbles-outline" size={iconSize.huge} color={isDark ? "#636366" : "#C4734A"} />
             </View>
-            <Text style={[s.emptyTitle, { color: textMain }]}>No chats yet</Text>
-            <Text style={[s.emptySub, { color: textSub }]}>
+            <Text style={[s.emptyTitle, { color: textPrimary }]}>No chats yet</Text>
+            <Text style={[s.emptySub, { color: textSecondary }]}>
                 Tap the button below to start a{"\n"}conversation with your contacts
             </Text>
             <TouchableOpacity
-                style={[s.startChatBtn, { backgroundColor: accentPurple }]}
+                style={[s.startChatBtn, { backgroundColor: accent }]}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate("NewChat")}
             >
@@ -276,29 +271,38 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 <Text style={s.startChatBtnTxt}>Start a Chat</Text>
             </TouchableOpacity>
         </View>
-    ), [isDark, textMain, textSub, accentPurple, navigation]);
+    ), [isDark, textPrimary, textSecondary, accent, navigation]);
 
     return (
         <View style={[s.container, { backgroundColor: bg }]}>
+            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bg} />
             {/* Header */}
             <View style={[s.header, { backgroundColor: bg }]}>
                 <View style={s.headerTop}>
-                    <Text style={[s.logo, { color: textMain }]}>Talksy</Text>
+                    <Text style={[s.logo, { color: textPrimary }]}>Chat</Text>
+                    <View style={s.headerActions}>
+                        <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}>
+                            <Ionicons name="search" size={20} color={textTertiary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}>
+                            <Ionicons name="ellipsis-vertical" size={20} color={textTertiary} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Search */}
                 <View style={[s.searchBox, { backgroundColor: surface }]}>
-                    <Ionicons name="search" size={20} color={textSub} style={s.searchIcon} />
+                    <Ionicons name="search" size={20} color={textTertiary} style={s.searchIcon} />
                     <TextInput
-                        style={[s.searchInput, { color: textMain }]}
-                        placeholder="Search Your Fav Person"
-                        placeholderTextColor={textSub}
+                        style={[s.searchInput, { color: textPrimary }]}
+                        placeholder="Search conversation..."
+                        placeholderTextColor={textTertiary}
                         value={search}
                         onChangeText={handleSearch}
                     />
                     {search ? (
                         <TouchableOpacity onPress={() => handleSearch("")}>
-                            <Ionicons name="close-circle" size={18} color={textSub} />
+                            <Ionicons name="close-circle" size={18} color={textTertiary} />
                         </TouchableOpacity>
                     ) : null}
                 </View>
@@ -306,9 +310,7 @@ export default function Home({ navigation, setIsLoggedIn }) {
 
             {/* Chat List */}
             {loadingConversations && conversations.length === 0 ? (
-                <View style={s.loaderWrap}>
-                    <ActivityIndicator size="large" color={textMain} />
-                </View>
+                <ChatListSkeleton baseColor={isDark ? "#2C2C2E" : "#F1D7D1"} />
             ) : (
                 <FlatList
                     data={filteredList}
@@ -317,7 +319,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
                     contentContainerStyle={[s.listContent, filteredList.length === 0 && { flex: 1 }]}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={EmptyConversations}
-                    // ─── Virtualization Tuning ───
                     windowSize={7}
                     initialNumToRender={12}
                     maxToRenderPerBatch={6}
@@ -326,12 +327,12 @@ export default function Home({ navigation, setIsLoggedIn }) {
                 />
             )}
 
-            {/* ─── Profile Popup Modal ─── */}
+            {/* Profile Popup Modal */}
             <Modal visible={popupVisible} transparent animationType="none" onRequestClose={hideProfilePopup}>
                 <Pressable style={s.popupOverlay} onPress={hideProfilePopup}>
                     <Animated.View style={[s.popupBackdrop, { opacity: popupAnim }]} />
                     <Animated.View style={[s.popupCard, {
-                        backgroundColor: isDark ? "#202c33" : "#fff",
+                        backgroundColor: isDark ? "#2C2C2E" : "#fff",
                         opacity: popupAnim,
                         transform: [{ scale: popupAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
                     }]}>
@@ -341,20 +342,22 @@ export default function Home({ navigation, setIsLoggedIn }) {
                                 style={s.popupImage}
                             />
                         ) : (
-                            <View style={[s.popupAvatarPlaceholder, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+                            <View style={[s.popupAvatarPlaceholder, { backgroundColor: isDark ? "#3A3A3C" : "#C4734A" }]}>
                                 <Text style={s.popupAvatarTxt}>
                                     {popupUser?.username?.charAt(0)?.toUpperCase()}
                                 </Text>
                             </View>
                         )}
-                        <Text style={[s.popupName, { color: textMain }]}>
-                            {popupUser?.name || popupUser?.username}
-                        </Text>
-                        {popupUser?.about ? (
-                            <Text style={[s.popupAbout, { color: textSub }]}>
-                                {popupUser.about}
+                        <View style={s.popupNameContainer}>
+                            <Text style={[s.popupName, { color: textPrimary }]}>
+                                {popupUser?.name || popupUser?.username}
                             </Text>
-                        ) : null}
+                            {popupUser?.about ? (
+                                <Text style={[s.popupAbout, { color: textSecondary }]}>
+                                    {popupUser.about}
+                                </Text>
+                            ) : null}
+                        </View>
                     </Animated.View>
                 </Pressable>
             </Modal>
@@ -366,15 +369,16 @@ const s = StyleSheet.create({
     container: { flex: 1 },
 
     // Header
-    header: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 12 },
-    headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-    logo: { fontSize: 28, fontWeight: "800" },
-    iconBtn: {
+    header: { paddingTop: 56, paddingHorizontal: 20, paddingBottom: 16 },
+    headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+    logo: { fontSize: typography.h1.fontSize, fontWeight: "800", letterSpacing: -0.5 },
+    headerActions: { flexDirection: "row", gap: 8 },
+    headerIconBtn: {
         width: 38, height: 38, borderRadius: 19,
         justifyContent: "center", alignItems: "center",
     },
     searchBox: {
-        flexDirection: "row", alignItems: "center", borderRadius: 12,
+        flexDirection: "row", alignItems: "center", borderRadius: radius.md,
         paddingHorizontal: 12, height: 44,
     },
     searchIcon: { marginRight: 8 },
@@ -383,35 +387,33 @@ const s = StyleSheet.create({
     // List
     listContent: { paddingBottom: 100 },
     chatItem: {
-        flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 20,
+        flexDirection: "row", alignItems: "center", paddingHorizontal: 20,
     },
     avatar: {
-        width: 50, height: 50, borderRadius: 25,
+        width: 52, height: 52, borderRadius: radius.avatar.lg,
         justifyContent: "center", alignItems: "center", marginRight: 14,
+        marginVertical: 12,
     },
-    avatarTxt: { color: "#fff", fontSize: 20, fontWeight: "600" },
+    avatarTxt: { fontSize: 20, fontWeight: "600" },
     onlineDot: {
-        width: 14, height: 14, borderRadius: 7, backgroundColor: "#25D366",
-        position: "absolute", bottom: 2, right: 14, borderWidth: 2,
+        width: 14, height: 14, borderRadius: 7,
+        position: "absolute", bottom: 12, right: 14, borderWidth: 2,
     },
-    chatInfo: { flex: 1 },
-    chatHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-    chatName: { fontSize: 16, fontWeight: "600", flex: 1, marginRight: 8 },
-    chatTime: { fontSize: 12 },
+    chatInfo: { flex: 1, paddingVertical: 14, height: "100%" },
+    chatHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
+    chatName: { fontSize: 16.5, fontWeight: "700", flex: 1, marginRight: 8, letterSpacing: -0.2 },
+    chatTime: { fontSize: 12, fontWeight: "500" },
     previewRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     previewTextWrap: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
     chatPreview: { fontSize: 14.5, flex: 1, lineHeight: 20 },
 
     // Unread Badge
     unreadBadge: {
-        backgroundColor: "#25D366", borderRadius: 12,
-        minWidth: 24, height: 24, paddingHorizontal: 6,
+        borderRadius: radius.pill,
+        minWidth: 22, height: 22, paddingHorizontal: 6,
         justifyContent: "center", alignItems: "center",
     },
-    unreadTxt: { color: "#fff", fontSize: 12, fontWeight: "700" },
-
-    // Loading / Empty
-    loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
+    unreadTxt: { fontSize: 11, fontWeight: "700" },
 
     // Empty State
     emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 40 },
@@ -419,11 +421,12 @@ const s = StyleSheet.create({
         width: 110, height: 110, borderRadius: 55,
         justifyContent: "center", alignItems: "center", marginBottom: 24,
     },
-    emptyTitle: { fontSize: 20, fontWeight: "700", marginBottom: 8, textAlign: "center" },
+    emptyTitle: { fontSize: 22, fontWeight: "800", marginBottom: 8, textAlign: "center" },
     emptySub: { fontSize: 14, textAlign: "center", lineHeight: 22, marginBottom: 24 },
     startChatBtn: {
         flexDirection: "row", alignItems: "center", gap: 6,
         paddingHorizontal: 24, paddingVertical: 14, borderRadius: 28,
+        ...shadows.md,
     },
     startChatBtnTxt: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
@@ -431,17 +434,16 @@ const s = StyleSheet.create({
     popupOverlay: { flex: 1, justifyContent: "center", alignItems: "center" },
     popupBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.6)" },
     popupCard: {
-        width: 280, borderRadius: 20, alignItems: "center",
-        paddingBottom: 24, overflow: "hidden",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.2, shadowRadius: 20, elevation: 12,
+        width: 280, borderRadius: radius.xl, alignItems: "center",
+        overflow: "hidden", ...shadows.xl,
     },
     popupImage: { width: 280, height: 280, resizeMode: "cover" },
     popupAvatarPlaceholder: {
         width: 280, height: 280, justifyContent: "center", alignItems: "center",
     },
     popupAvatarTxt: { color: "#fff", fontSize: 80, fontWeight: "700" },
-    popupName: { fontSize: 20, fontWeight: "700", marginTop: 16, textAlign: "center" },
-    popupAbout: { fontSize: 14, marginTop: 4, textAlign: "center", paddingHorizontal: 16 },
+    popupNameContainer: { padding: 20, alignItems: "center", width: "100%" },
+    popupName: { fontSize: 20, fontWeight: "700", textAlign: "center" },
+    popupAbout: { fontSize: 14, marginTop: 6, textAlign: "center", paddingHorizontal: 16 },
 
 });

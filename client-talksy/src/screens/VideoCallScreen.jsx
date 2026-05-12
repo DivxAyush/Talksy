@@ -137,7 +137,7 @@ export default function VideoCallScreen({ route, navigation }) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1a1a2e" },
-  remoteVideoMock: { flex: 1, backgroundColor: "#202c33", justifyContent: "center", alignItems: "center" },
+  remoteVideoMock: { flex: 1, backgroundColor: "#1C1C1E", justifyContent: "center", alignItems: "center" },
   mockText: { color: "#fff", opacity: 0.8, fontSize: 18, marginTop: 16 },
   mockSubText: { color: "#fff", opacity: 0.5, fontSize: 14, marginTop: 8 },
   callingWrap: { flex: 1, justifyContent: "center", alignItems: "center" },

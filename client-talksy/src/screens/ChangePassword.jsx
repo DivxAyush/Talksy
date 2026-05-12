@@ -11,7 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import SuccessPopup from "../Components/SuccessPopup";
 
 const API = "https://talksy-3py1.onrender.com/api/users";
-const PURPLE = "#5B5FC7";
+const COPPER = "#C4734A";
 
 export default function ChangePassword() {
  const [newPassword, setNewPassword] = useState("");
@@ -101,14 +101,14 @@ export default function ChangePassword() {
 
  return (
   <View style={s.container}>
-   <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+   <StatusBar barStyle="dark-content" backgroundColor="#F7ECE9" />
    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
      {/* Header */}
      <View style={s.header}>
       <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-       <Ionicons name="arrow-back" size={22} color="#1a1a2e" />
+       <Ionicons name="arrow-back" size={22} color="#2B1F1A" />
       </TouchableOpacity>
      </View>
 
@@ -212,7 +212,7 @@ export default function ChangePassword() {
 }
 
 const s = StyleSheet.create({
- container: { flex: 1, backgroundColor: "#fff" },
+ container: { flex: 1, backgroundColor: "#F7ECE9" },
  scroll: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 40 },
  header: {
   paddingTop: Platform.OS === "ios" ? 56 : 48,
@@ -220,33 +220,33 @@ const s = StyleSheet.create({
  },
  backBtn: {
   width: 42, height: 42, borderRadius: 12, borderWidth: 1.2,
-  borderColor: "#e5e5e5", justifyContent: "center", alignItems: "center",
+  borderColor: "#F1D7D1", justifyContent: "center", alignItems: "center",
  },
 
  lockWrap: { alignItems: "center", marginVertical: 20 },
  lockCircle: {
   width: 72, height: 72, borderRadius: 36,
-  backgroundColor: PURPLE, justifyContent: "center", alignItems: "center",
-  shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 },
+  backgroundColor: COPPER, justifyContent: "center", alignItems: "center",
+  shadowColor: COPPER, shadowOffset: { width: 0, height: 6 },
   shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
  },
 
- title: { fontSize: 24, fontWeight: "800", color: "#1a1a2e", marginBottom: 8, textAlign: "center" },
- sub: { fontSize: 14, color: "#888", lineHeight: 20, marginBottom: 32, textAlign: "center" },
+ title: { fontSize: 24, fontWeight: "800", color: "#2B1F1A", marginBottom: 8, textAlign: "center" },
+ sub: { fontSize: 14, color: "#8E5A55", lineHeight: 20, marginBottom: 32, textAlign: "center" },
 
- label: { fontSize: 13, color: "#888", marginBottom: 10 },
+ label: { fontSize: 13, color: "#8E5A55", marginBottom: 10 },
  passBox: {
   flexDirection: "row", alignItems: "center",
-  borderWidth: 1.5, borderColor: "#e5e5e5", borderRadius: 14,
+  borderWidth: 1.5, borderColor: "#F1D7D1", borderRadius: 14,
   paddingHorizontal: 14, height: 54,
  },
  errBorder: { borderColor: "#e74c3c" },
- passInput: { flex: 1, fontSize: 15, color: "#1a1a2e" },
+ passInput: { flex: 1, fontSize: 15, color: "#2B1F1A" },
  err: { color: "#e74c3c", fontSize: 12, marginTop: 6 },
 
  // Strength
  strengthWrap: { flexDirection: "row", alignItems: "center", marginTop: 10, gap: 8 },
- strengthBarBg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "#f0f0f0" },
+ strengthBarBg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "#F1D7D1" },
  strengthBar: { height: 4, borderRadius: 2 },
  strengthLabel: { fontSize: 12, fontWeight: "600" },
 
@@ -255,7 +255,7 @@ const s = StyleSheet.create({
  matchTxt: { fontSize: 12, color: "#2ecc71", fontWeight: "600" },
 
  btn: {
-  backgroundColor: PURPLE, paddingVertical: 16, borderRadius: 14,
+  backgroundColor: COPPER, paddingVertical: 16, borderRadius: 14,
   alignItems: "center", marginTop: 36,
  },
  btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },

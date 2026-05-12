@@ -100,7 +100,7 @@ export const setupNotificationChannel = async () => {
       description: "New message notifications from Talksy",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#25D366",
+      lightColor: "#C4734A",
       sound: "default",
       enableLights: true,
       enableVibrate: true,

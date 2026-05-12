@@ -8,7 +8,7 @@ import { ThemeContext } from "../context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const PURPLE = "#5B5FC7";
+const COPPER = "#C4734A";
 
 export default function Settings({ navigation, setIsLoggedIn }) {
     const { isDark, toggleTheme } = useContext(ThemeContext);
@@ -17,7 +17,7 @@ export default function Settings({ navigation, setIsLoggedIn }) {
     const [modalVisible, setModalVisible] = useState(false);
     const sheetAnim = useRef(new Animated.Value(0)).current;
     const curtainAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
-    const [curtainColor, setCurtainColor] = useState("#1a1a2e");
+    const [curtainColor, setCurtainColor] = useState("#2B1F1A");
 
     useEffect(() => {
         const loadUser = async () => {
@@ -29,10 +29,10 @@ export default function Settings({ navigation, setIsLoggedIn }) {
     }, [navigation]);
 
     // Dynamic Colors
-    const bg = isDark ? "#111b21" : "#fafafa";
-    const surface = isDark ? "#202c33" : "#fff";
-    const textMain = isDark ? "#e9edef" : "#111b21";
-    const textSub = isDark ? "#8696a0" : "#667781";
+    const bg = isDark ? "#121212" : "#F7ECE9";
+    const surface = isDark ? "#1C1C1E" : "#FFFFFF";
+    const textMain = isDark ? "#FFFFFF" : "#2B1F1A";
+    const textSub = isDark ? "#A1A1A6" : "#8E5A55";
 
     const openModal = () => {
         setModalVisible(true);
@@ -49,7 +49,7 @@ export default function Settings({ navigation, setIsLoggedIn }) {
         closeModal();
         if ((mode === "dark" && isDark) || (mode === "light" && !isDark)) return;
 
-        setCurtainColor(mode === "dark" ? "#111b21" : "#fafafa");
+        setCurtainColor(mode === "dark" ? "#121212" : "#F7ECE9");
 
         curtainAnim.setValue(-SCREEN_HEIGHT);
         Animated.timing(curtainAnim, {
@@ -88,20 +88,20 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                 {/* Profile Section */}
                 <View style={s.profileSection}>
                     <View style={s.avatarWrap}>
-                        <View style={[s.avatar, { backgroundColor: isDark ? "#202c33" : "#f0f0f0" }]}>
+                        <View style={[s.avatar, { backgroundColor: isDark ? "#2C2C2E" : "#F1D7D1" }]}>
                             {user?.profilePic ? (
                                 <Image source={{ uri: user.profilePic }} style={{ width: "100%", height: "100%", borderRadius: 45 }} />
                             ) : (
-                                <Text style={[s.avatarTxt, { color: isDark ? "#fff" : "#333" }]}>{user?.username?.charAt(0)?.toUpperCase() || "T"}</Text>
+                                <Text style={[s.avatarTxt, { color: isDark ? "#fff" : "#C4734A" }]}>{user?.username?.charAt(0)?.toUpperCase() || "K"}</Text>
                             )}
                         </View>
                     </View>
                     <View style={s.profileInfo}>
-                        <Text style={[s.profileName, { color: textMain }]}>{user?.name || user?.username || "Talksy User"}</Text>
+                        <Text style={[s.profileName, { color: textMain }]}>{user?.name || user?.username || "Klyro User"}</Text>
                         <Text style={[s.profileStatus, { color: textSub }]}>@{user?.username || "username"}</Text>
                     </View>
                     <TouchableOpacity
-                        style={[s.editProfileBtn, { backgroundColor: PURPLE }]}
+                        style={[s.editProfileBtn, { backgroundColor: COPPER }]}
                         onPress={() => navigation.navigate("Profile")}
                         activeOpacity={0.8}
                     >
@@ -109,7 +109,7 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                     </TouchableOpacity>
                 </View>
 
-                <View style={[s.divider, { backgroundColor: isDark ? "#333" : "#eee" }]} />
+                <View style={[s.divider, { backgroundColor: isDark ? "#2A2A2D" : "#F1D7D1" }]} />
 
                 {/* Settings List */}
                 <View style={s.settingsList}>
@@ -120,7 +120,7 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                         navigation.navigate("VerifyOTP", { mobile: userMobile, flow: "settings" });
                     }} />
 
-                    <View style={[s.divider, { backgroundColor: isDark ? "#333" : "#eee", marginVertical: 10 }]} />
+                    <View style={[s.divider, { backgroundColor: isDark ? "#2A2A2D" : "#F1D7D1", marginVertical: 10 }]} />
 
                     <SettingItem icon="help-circle-outline" title="Help & Support" />
 
@@ -231,7 +231,7 @@ const s = StyleSheet.create({
         width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#777",
         justifyContent: "center", alignItems: "center",
     },
-    radioOuterActive: { borderColor: PURPLE },
-    radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: PURPLE },
+    radioOuterActive: { borderColor: COPPER },
+    radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: COPPER },
     radioText: { fontSize: 16, fontWeight: "500" },
 });

@@ -1,23 +1,84 @@
 import { useContext, useMemo } from "react";
 import { ThemeContext } from "../../context/ThemeContext";
+import { lightColors, darkColors } from "../../theme/colors";
 
 export const useThemeColors = () => {
   const { isDark } = useContext(ThemeContext);
 
-  const colors = useMemo(() => ({
-    isDark,
-    bg: isDark ? "#0b141a" : "#fafafa",
-    headerBg: isDark ? "#202c33" : "#fff",
-    surface: isDark ? "#202c33" : "#f5f5f5",
-    textMain: isDark ? "#e9edef" : "#1a1a2e",
-    textSub: isDark ? "#8696a0" : "#999",
-    border: isDark ? "#202c33" : "#f0f0f0",
-    myBubble: isDark ? "#005c4b" : "#1a1a2e",
-    otherBubble: isDark ? "#202c33" : "#f0f0f0",
-    myBubbleTxt: isDark ? "#e9edef" : "#fff",
-    otherBubbleTxt: isDark ? "#e9edef" : "#1a1a2e",
-    accentPurple: "#a855f7",
-  }), [isDark]);
+  const colors = useMemo(() => {
+    const palette = isDark ? darkColors : lightColors;
+    
+    // Backward-compatible shape — existing components keep working
+    return {
+      isDark,
+      // ─── Legacy keys (preserved for backward compat) ───
+      bg: palette.bg,
+      headerBg: palette.headerBg,
+      surface: palette.surface,
+      textMain: palette.textPrimary,
+      textSub: palette.textSecondary,
+      border: palette.border,
+      myBubble: palette.myBubble,
+      otherBubble: palette.otherBubble,
+      myBubbleTxt: palette.myBubbleText,
+      otherBubbleTxt: palette.otherBubbleText,
+      accentPurple: palette.accent,
+      
+      // ─── Extended premium palette ───
+      bgSecondary: palette.bgSecondary,
+      surfaceElevated: palette.surfaceElevated,
+      textTertiary: palette.textTertiary,
+      textInverse: palette.textInverse,
+      borderLight: palette.borderLight,
+      divider: palette.divider,
+      
+      // Bubble extras
+      myBubbleTime: palette.myBubbleTime,
+      otherBubbleTime: palette.otherBubbleTime,
+      myBubbleOverlay: palette.myBubbleOverlay,
+      otherBubbleOverlay: palette.otherBubbleOverlay,
+      
+      // Ticks
+      tickDefault: palette.tickDefault,
+      tickRead: palette.tickRead,
+      tickFailed: palette.tickFailed,
+      
+      // Accents
+      accent: palette.accent,
+      accentSoft: palette.accentSoft,
+      online: palette.online,
+      onlineSoft: palette.onlineSoft,
+      typing: palette.typing,
+      replyAccent: palette.replyAccent,
+      
+      // Interactive
+      pressedOverlay: palette.pressedOverlay,
+      skeleton: palette.skeleton,
+      skeletonHighlight: palette.skeletonHighlight,
+      
+      // Date header
+      dateHeaderBg: palette.dateHeaderBg,
+      dateHeaderText: palette.dateHeaderText,
+      
+      // Unread
+      unreadBg: palette.unreadBg,
+      unreadText: palette.unreadText,
+      
+      // Misc
+      danger: palette.danger,
+      dangerSoft: palette.dangerSoft,
+      overlay: palette.overlay,
+      overlayLight: palette.overlayLight,
+      
+      // Input
+      inputBg: palette.inputBg,
+      inputPlaceholder: palette.inputPlaceholder,
+      
+      // Tab bar
+      tabBarBg: palette.tabBarBg,
+      tabInactive: palette.tabInactive,
+    };
+  }, [isDark]);
 
   return colors;
 };

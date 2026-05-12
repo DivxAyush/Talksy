@@ -33,14 +33,14 @@ export default function NewChat({ navigation }) {
     const listItemAnims = useRef([]).current;
 
     // ─── Theme Colors ───
-    const bg = isDark ? "#111b21" : "#fff";
-    const surface = isDark ? "#202c33" : "#f5f5f5";
-    const textMain = isDark ? "#e9edef" : "#1a1a2e";
-    const textSub = isDark ? "#8696a0" : "#666";
-    const border = isDark ? "#2a3942" : "#f0f0f0";
-    const accentGreen = "#25D366";
-    const accentTeal = isDark ? "#00a884" : "#008069";
-    const sectionBg = isDark ? "#182229" : "#f8f9fa";
+    const bg = isDark ? "#121212" : "#F7ECE9";
+    const surface = isDark ? "#1C1C1E" : "#FFFFFF";
+    const textMain = isDark ? "#FFFFFF" : "#2B1F1A";
+    const textSub = isDark ? "#A1A1A6" : "#8E5A55";
+    const border = isDark ? "#2A2A2D" : "#F1D7D1";
+    const accentGreen = "#C4734A";
+    const accentTeal = "#C4734A";
+    const sectionBg = isDark ? "#1A1A1A" : "#F0DDD8";
 
     useEffect(() => {
         // Entrance animation
@@ -169,7 +169,7 @@ export default function NewChat({ navigation }) {
     }, []);
 
     const handleInvite = (contact) => {
-        const message = `Hey! Join me on Talksy – the coolest chat app! 🚀\nDownload now: https://talksy.app`;
+        const message = `Hey! Join me on Klyro – the coolest chat app! 🚀\nDownload now: https://klyro.app`;
         const smsUrl = Platform.select({
             ios: `sms:${contact.phone}&body=${encodeURIComponent(message)}`,
             android: `sms:${contact.phone}?body=${encodeURIComponent(message)}`,
@@ -222,11 +222,11 @@ export default function NewChat({ navigation }) {
     const buildListData = () => {
         const data = [];
         if (filteredTalksy.length > 0) {
-            data.push({ type: "header", title: `Contacts on Talksy`, count: filteredTalksy.length });
+            data.push({ type: "header", title: `Contacts on Klyro`, count: filteredTalksy.length });
             filteredTalksy.forEach(c => data.push({ type: "talksy", ...c }));
         }
         if (filteredInvite.length > 0) {
-            data.push({ type: "header", title: "Invite to Talksy", count: filteredInvite.length });
+            data.push({ type: "header", title: "Invite to Klyro", count: filteredInvite.length });
             filteredInvite.forEach(c => data.push({ type: "invite", ...c }));
         }
         return data;
@@ -285,8 +285,8 @@ export default function NewChat({ navigation }) {
                     <View>
                         <View style={[styles.avatar, {
                             backgroundColor: isOnTalksy
-                                ? (isDark ? "#2a3942" : "#1a1a2e")
-                                : (isDark ? "#374045" : "#ddd"),
+                                ? (isDark ? "#2C2C2E" : "#F1D7D1")
+                                : (isDark ? "#3A3A3C" : "#F5E3DE"),
                         }]}>
                             {profilePic ? (
                                 <Image source={{ uri: profilePic }} style={styles.avatarImg} />
@@ -294,7 +294,7 @@ export default function NewChat({ navigation }) {
                                 <Image source={{ uri: item.image }} style={styles.avatarImg} />
                             ) : (
                                 <Text style={[styles.avatarTxt, {
-                                    color: isOnTalksy ? "#fff" : (isDark ? "#8696a0" : "#999")
+                                    color: isOnTalksy ? (isDark ? "#fff" : "#C4734A") : (isDark ? "#636366" : "#B08F8A")
                                 }]}>
                                     {displayName?.charAt(0)?.toUpperCase()}
                                 </Text>
@@ -312,7 +312,7 @@ export default function NewChat({ navigation }) {
                         </Text>
                         {isOnTalksy ? (
                             <Text style={[styles.contactSub, { color: isOnline ? accentGreen : textSub }]}>
-                                {isOnline ? "Online" : (item.talksyUser?.about || "Hey there! I am using Talksy.")}
+                                {isOnline ? "Online" : (item.talksyUser?.about || "Hey there! I am using Klyro.")}
                             </Text>
                         ) : (
                             <Text style={[styles.contactSub, { color: textSub }]} numberOfLines={1}>
@@ -344,7 +344,7 @@ export default function NewChat({ navigation }) {
     // ─── Permission Denied View ───
     const PermissionDeniedView = () => (
         <View style={styles.emptyWrap}>
-            <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? "#1C1C1E" : "#F1D7D1" }]}>
                 <Ionicons name="lock-closed-outline" size={48} color={textSub} />
             </View>
             <Text style={[styles.emptyTitle, { color: textMain }]}>Contact Access Required</Text>
@@ -362,7 +362,7 @@ export default function NewChat({ navigation }) {
 
     return (
         <Animated.View style={[styles.container, { backgroundColor: bg, transform: [{ translateX: slideAnim }], opacity: fadeAnim }]}>
-            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#111b21" : "#fff"} />
+            <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? "#121212" : "#F7ECE9"} />
 
             {/* ─── Header ─── */}
             <Animated.View style={[styles.header, { backgroundColor: bg, transform: [{ translateY: headerAnim }] }]}>
@@ -425,7 +425,7 @@ export default function NewChat({ navigation }) {
                     }
                     ListEmptyComponent={
                         <View style={styles.emptyWrap}>
-                            <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? "#1f2c34" : "#f0f4f5" }]}>
+                            <View style={[styles.emptyIconWrap, { backgroundColor: isDark ? "#1C1C1E" : "#F1D7D1" }]}>
                                 <Ionicons name="people-outline" size={48} color={textSub} />
                             </View>
                             <Text style={[styles.emptyTitle, { color: textMain }]}>
@@ -486,7 +486,7 @@ const styles = StyleSheet.create({
     avatarImg: { width: 48, height: 48, borderRadius: 24 },
     avatarTxt: { fontSize: 18, fontWeight: "700" },
     onlineDot: {
-        width: 14, height: 14, borderRadius: 7, backgroundColor: "#25D366",
+        width: 14, height: 14, borderRadius: 7, backgroundColor: "#C4734A",
         position: "absolute", bottom: 0, right: -2, borderWidth: 2.5,
     },
     contactInfo: { flex: 1, marginLeft: 14 },

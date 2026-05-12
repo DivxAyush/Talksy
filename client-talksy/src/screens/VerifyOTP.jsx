@@ -7,7 +7,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 
-const PURPLE = "#5B5FC7";
+const COPPER = "#C4734A";
 const STATIC_OTP = "1234";
 
 // ─── Animated OTP Digit Component ───
@@ -176,7 +176,7 @@ export default function VerifyOTP() {
 
  return (
   <View style={s.container}>
-   <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+   <StatusBar barStyle="dark-content" backgroundColor="#F7ECE9" />
    <KeyboardAvoidingView
     behavior={Platform.OS === "ios" ? "padding" : "height"}
     style={{ flex: 1 }}
@@ -191,7 +191,7 @@ export default function VerifyOTP() {
      {/* Header */}
      <View style={s.header}>
       <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-       <Ionicons name="arrow-back" size={22} color="#1a1a2e" />
+       <Ionicons name="arrow-back" size={22} color="#2B1F1A" />
       </TouchableOpacity>
      </View>
 
@@ -265,7 +265,7 @@ export default function VerifyOTP() {
 }
 
 const s = StyleSheet.create({
- container: { flex: 1, backgroundColor: "#fff" },
+ container: { flex: 1, backgroundColor: "#F7ECE9" },
  scrollContent: { flexGrow: 1 },
  header: {
   paddingTop: Platform.OS === "ios" ? 56 : 48,
@@ -273,24 +273,24 @@ const s = StyleSheet.create({
  },
  backBtn: {
   width: 42, height: 42, borderRadius: 12, borderWidth: 1.2,
-  borderColor: "#e5e5e5", justifyContent: "center", alignItems: "center",
+  borderColor: "#F1D7D1", justifyContent: "center", alignItems: "center",
  },
 
  content: { paddingHorizontal: 24, alignItems: "center", paddingTop: 20 },
- title: { fontSize: 26, fontWeight: "800", color: "#1a1a2e", marginBottom: 10, textAlign: "center" },
- sub: { fontSize: 14, color: "#888", textAlign: "center", lineHeight: 20, marginBottom: 36 },
+ title: { fontSize: 26, fontWeight: "800", color: "#2B1F1A", marginBottom: 10, textAlign: "center" },
+ sub: { fontSize: 14, color: "#8E5A55", textAlign: "center", lineHeight: 20, marginBottom: 36 },
 
  // OTP Boxes
  otpRow: { flexDirection: "row", justifyContent: "center", gap: 14, marginBottom: 16 },
  otpBox: {
   width: 58, height: 58, borderRadius: 14,
-  borderWidth: 2, borderColor: "#e5e5e5",
+  borderWidth: 2, borderColor: "#F1D7D1",
   justifyContent: "center", alignItems: "center",
-  backgroundColor: "#fafafa",
+  backgroundColor: "#FFF5F2",
   overflow: "hidden",
  },
  otpBoxFilled: {
-  backgroundColor: PURPLE, borderColor: PURPLE,
+  backgroundColor: COPPER, borderColor: COPPER,
  },
  otpBoxError: {
   borderColor: "#e74c3c",
@@ -316,13 +316,13 @@ const s = StyleSheet.create({
 
  // Resend
  resendRow: { alignItems: "center", marginTop: 24 },
- resendTxt: { fontSize: 14, color: "#888", marginBottom: 6 },
- resendLink: { fontSize: 14, fontWeight: "700", color: PURPLE },
+ resendTxt: { fontSize: 14, color: "#8E5A55", marginBottom: 6 },
+ resendLink: { fontSize: 14, fontWeight: "700", color: COPPER },
 
  // Verify Button
  btnWrap: { width: "100%", marginTop: 32, paddingBottom: 24 },
  btn: {
-  backgroundColor: PURPLE, paddingVertical: 16, borderRadius: 14,
+  backgroundColor: COPPER, paddingVertical: 16, borderRadius: 14,
   alignItems: "center",
  },
  btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },

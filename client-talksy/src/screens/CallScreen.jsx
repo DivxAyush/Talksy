@@ -57,7 +57,7 @@ export default function CallScreen({ route, navigation }) {
             signalData: { channel },
             from: currentUserId,
             isVideo: false,
-            callerName: me.name || me.username || "Talksy User",
+            callerName: me.name || me.username || "Klyro User",
             callerPic: me.profilePic || ""
           });
         });
@@ -100,7 +100,7 @@ export default function CallScreen({ route, navigation }) {
   };
 
   return (
-    <LinearGradient colors={['#111928', '#202c33']} style={s.container}>
+    <LinearGradient colors={['#111928', '#1C1C1E']} style={s.container}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => endCall(true)} style={s.backBtn}>
           <Ionicons name="chevron-down" size={32} color="#fff" />
@@ -116,7 +116,7 @@ export default function CallScreen({ route, navigation }) {
           {user?.profilePic ? (
             <Image source={{ uri: user.profilePic }} style={s.avatar} />
           ) : (
-            <View style={[s.avatar, { backgroundColor: "#a855f7", justifyContent: "center", alignItems: "center" }]}>
+            <View style={[s.avatar, { backgroundColor: "#C4734A", justifyContent: "center", alignItems: "center" }]}>
               <Text style={{ fontSize: 64, color: "#fff", fontWeight: "700" }}>
                 {(user?.name || user?.username || "U").charAt(0).toUpperCase()}
               </Text>
@@ -159,9 +159,9 @@ const s = StyleSheet.create({
   headerStatus: { color: "#fff", fontSize: 16, opacity: 0.8 },
   body: { alignItems: "center", flex: 1, justifyContent: "center", marginTop: -60 },
   avatarContainer: { 
-    shadowColor: "#25D366", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 30, elevation: 20 
+    shadowColor: "#C4734A", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 30, elevation: 20 
   },
-  avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: "#25D366" },
+  avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 2, borderColor: "#C4734A" },
   name: { fontSize: 28, color: "#fff", fontWeight: "600", marginTop: 24 },
   duration: { fontSize: 18, color: "#fff", opacity: 0.8, marginTop: 8 },
   controls: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 30, paddingBottom: 60 },

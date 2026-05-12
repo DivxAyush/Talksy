@@ -33,12 +33,13 @@ export default function Profile({ navigation }) {
     const toastAnim = React.useRef(new Animated.Value(50)).current;
 
     // Dynamic Theme Colors
-    const bg = isDark ? "#0b141a" : "#fafafa";
-    const headerBg = isDark ? "#202c33" : "#fff";
-    const surface = isDark ? "#202c33" : "#fff";
-    const textMain = isDark ? "#e9edef" : "#1a1a2e";
-    const textSub = isDark ? "#8696a0" : "#666";
-    const border = isDark ? "#202c33" : "#f0f0f0";
+    const bg = isDark ? "#121212" : "#F7ECE9";
+    const headerBg = isDark ? "#1C1C1E" : "#F7ECE9";
+    const surface = isDark ? "#1C1C1E" : "#FFFFFF";
+    const textMain = isDark ? "#FFFFFF" : "#2B1F1A";
+    const textSub = isDark ? "#A1A1A6" : "#8E5A55";
+    const border = isDark ? "#2A2A2D" : "#F1D7D1";
+    const copper = "#C4734A";
 
     useEffect(() => {
         const loadUser = async () => {
@@ -165,53 +166,53 @@ export default function Profile({ navigation }) {
                         {/* Avatar Section */}
                         <View style={s.avatarWrap}>
                             <TouchableOpacity
-                                style={[s.avatar, { backgroundColor: isDark ? "#202c33" : "#f0f0f0" }]}
+                                style={[s.avatar, { backgroundColor: isDark ? "#2C2C2E" : "#F1D7D1" }]}
                                 onPress={openPickerMenu}
                                 activeOpacity={0.8}
                             >
                                 {profilePic ? (
                                     <Animated.Image source={{ uri: profilePic }} style={s.avatarImg} />
                                 ) : (
-                                    <Text style={[s.avatarTxt, { color: isDark ? "#fff" : "#333" }]}>
+                                    <Text style={[s.avatarTxt, { color: isDark ? "#fff" : "#C4734A" }]}>
                                         {user?.username?.charAt(0)?.toUpperCase()}
                                     </Text>
                                 )}
                             </TouchableOpacity>
-                            <TouchableOpacity style={[s.cameraBtn, { backgroundColor: isDark ? "#333" : "#000" }]} onPress={openPickerMenu}>
+                            <TouchableOpacity style={[s.cameraBtn, { backgroundColor: copper }]} onPress={openPickerMenu}>
                                 <Ionicons name="camera" size={12} color="#fff" />
                             </TouchableOpacity>
                         </View>
 
                         <View style={s.profileNamesContainer}>
-                            <Text style={[s.displayName, { color: textMain }]}>{user?.name || user?.username || "Talksy User"}</Text>
+                            <Text style={[s.displayName, { color: textMain }]}>{user?.name || user?.username || "Klyro User"}</Text>
                             <Text style={[s.displayUsername, { color: textSub }]}>@{user?.username || "username"}</Text>
                         </View>
 
                         <View style={s.infoContainer}>
                             {/* Full Name / Nickname Card */}
-                            <View style={[s.card, { borderColor: isDark ? "#333" : "#dcdcdc" }]}>
+                            <View style={[s.card, { borderColor: border, backgroundColor: surface }]}>
                                 <View style={s.cardContent}>
-                                    <Text style={s.cardLabel}>Nickname / Full name</Text>
+                                    <Text style={[s.cardLabel, { color: textSub }]}>Nickname / Full name</Text>
                                     <TextInput
                                         style={[s.input, { color: textMain }]}
                                         value={name}
                                         onChangeText={setName}
                                         placeholder="Your name"
-                                        placeholderTextColor={textSub}
+                                        placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
                                     />
                                 </View>
                             </View>
 
                             {/* Username Card */}
-                            <View style={[s.card, { borderColor: isDark ? "#333" : "#dcdcdc", marginTop: 12 }]}>
+                            <View style={[s.card, { borderColor: border, backgroundColor: surface, marginTop: 12 }]}>
                                 <View style={s.cardContent}>
-                                    <Text style={s.cardLabel}>Username</Text>
+                                    <Text style={[s.cardLabel, { color: textSub }]}>Username</Text>
                                     <TextInput
                                         style={[s.input, { color: textSub }]}
                                         value={username}
                                         onChangeText={(t) => setUsername(t.replace(/\s/g, ''))}
-                                        placeholder="e.g. talksy_user"
-                                        placeholderTextColor={textSub}
+                                        placeholder="e.g. klyro_user"
+                                        placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
                                         autoCapitalize="none"
                                         editable={false}
                                     />
@@ -220,23 +221,23 @@ export default function Profile({ navigation }) {
 
 
                             {/* Phone Number Card */}
-                            <View style={[s.card, { borderColor: isDark ? "#333" : "#dcdcdc", marginTop: 12 }]}>
+                            <View style={[s.card, { borderColor: border, backgroundColor: surface, marginTop: 12 }]}>
                                 <View style={s.cardContent}>
-                                    <Text style={s.cardLabel}>Phone number</Text>
+                                    <Text style={[s.cardLabel, { color: textSub }]}>Phone number</Text>
                                     <Text disabled style={[s.input, { color: textMain }]}>{user?.mobile || ""}</Text>
                                 </View>
                             </View>
 
-                            {/* Email Card (Using About for layout) */}
-                            <View style={[s.card, { borderColor: isDark ? "#333" : "#dcdcdc", marginTop: 12 }]}>
+                            {/* About Card */}
+                            <View style={[s.card, { borderColor: border, backgroundColor: surface, marginTop: 12 }]}>
                                 <View style={s.cardContent}>
-                                    <Text style={s.cardLabel}>About</Text>
+                                    <Text style={[s.cardLabel, { color: textSub }]}>About</Text>
                                     <TextInput
                                         style={[s.input, { color: textMain }]}
                                         value={about}
                                         onChangeText={setAbout}
                                         placeholder="Your about or email"
-                                        placeholderTextColor={textSub}
+                                        placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
                                     />
                                 </View>
                             </View>
@@ -245,7 +246,7 @@ export default function Profile({ navigation }) {
                         {/* Save Button */}
                         <View style={s.bottomContainer}>
                             <TouchableOpacity
-                                style={[s.saveBtn, { backgroundColor: isDark ? "#222" : "#111" }]}
+                                style={[s.saveBtn, { backgroundColor: copper }]}
                                 onPress={saveProfile}
                                 disabled={saving}
                             >
@@ -308,7 +309,6 @@ const s = StyleSheet.create({
     avatarWrap: { alignSelf: "center", marginTop: 10, marginBottom: 12, position: "relative" },
     avatar: {
         width: 80, height: 80, borderRadius: 40,
-        borderWidth: 1, borderColor: "#ccc",
         justifyContent: "center", alignItems: "center",
         overflow: "hidden"
     },
@@ -322,18 +322,17 @@ const s = StyleSheet.create({
     },
     profileNamesContainer: { alignItems: "center", marginBottom: 30 },
     displayName: { fontSize: 18, fontWeight: "700", marginBottom: 2 },
-    displayUsername: { fontSize: 13, color: "#999" },
+    displayUsername: { fontSize: 13 },
 
     infoContainer: { paddingHorizontal: 24 },
     card: {
         paddingVertical: 10, paddingHorizontal: 16,
         borderRadius: 12, borderWidth: 1,
-        backgroundColor: "transparent"
     },
     rowCards: { flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
     halfCard: { width: "48%" },
     cardContent: { justifyContent: "center" },
-    cardLabel: { fontSize: 11, fontWeight: "400", marginBottom: 2, color: "#aaa" },
+    cardLabel: { fontSize: 11, fontWeight: "400", marginBottom: 2 },
     input: { fontSize: 14, fontWeight: "600", padding: 0, margin: 0 },
 
     bottomContainer: {

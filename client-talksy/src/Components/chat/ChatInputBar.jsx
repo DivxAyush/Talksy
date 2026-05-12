@@ -3,6 +3,7 @@ import { View, TextInput, TouchableOpacity, Text, Animated, ActivityIndicator, S
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { formatDuration } from "../../utils/chat/formatters";
+import { spacing, radius, typography } from "../../theme/designTokens";
 
 const ChatInputBar = React.memo(({
   text,
@@ -25,10 +26,12 @@ const ChatInputBar = React.memo(({
     <View style={[s.inputBar, { backgroundColor: headerBg, borderTopColor: border }]}>
       {isRecording ? (
         <View style={s.recordingContainer}>
-          <Ionicons name="mic" size={24} color="#e74c3c" />
+          <View style={s.recordingDotWrap}>
+            <View style={s.recordingDot} />
+          </View>
           <Text style={[s.recordTime, { color: textMain }]}>{formatDuration(recordDuration)}</Text>
           <Animated.View style={[s.slideCancel, { transform: [{ translateX: recordSlideAnim }] }]}>
-            <Ionicons name="chevron-back" size={20} color={textSub} />
+            <Ionicons name="chevron-back" size={18} color={textSub} />
             <Text style={[s.slideCancelTxt, { color: textSub }]}>Slide to cancel</Text>
           </Animated.View>
         </View>
@@ -37,13 +40,13 @@ const ChatInputBar = React.memo(({
           <TouchableOpacity onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             toggleAttachMenu();
-          }} style={s.attachBtn}>
-            <Ionicons name="add" size={28} color={textSub} />
+          }} style={s.attachBtn} activeOpacity={0.6}>
+            <Ionicons name="add" size={26} color={textSub} />
           </TouchableOpacity>
           <View style={[s.inputBox, { backgroundColor: surface }]}>
             <TextInput
               style={[s.input, { color: textMain }]}
-              placeholder="Type a message..."
+              placeholder="Message"
               placeholderTextColor={textSub}
               value={text}
               onChangeText={handleTextChange}
@@ -58,6 +61,7 @@ const ChatInputBar = React.memo(({
         style={[
           s.actionBtn,
           (hasText || isRecording) && { backgroundColor: myBubble },
+          !hasText && !isRecording && { backgroundColor: "transparent" },
           { transform: [{ translateX: recordSlideAnim }] }
         ]}
       >
@@ -89,14 +93,66 @@ const ChatInputBar = React.memo(({
 });
 
 const s = StyleSheet.create({
-  inputBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 10, borderTopWidth: 1 },
-  inputBox: { flex: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, minHeight: 40, maxHeight: 100, justifyContent: "center" },
-  input: { fontSize: 15, padding: 0 },
-  actionBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#f5f5f5", justifyContent: "center", alignItems: "center" },
-  attachBtn: { padding: 8, marginRight: 4 },
-  recordingContainer: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 12 },
-  recordTime: { fontSize: 16, fontWeight: "600" },
-  slideCancel: { flexDirection: "row", alignItems: "center", gap: 4 },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 0.5,
+  },
+  inputBox: {
+    flex: 1,
+    borderRadius: radius.input,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 1,
+    marginRight: spacing.sm,
+    minHeight: 42,
+    maxHeight: 100,
+    justifyContent: "center",
+  },
+  input: {
+    fontSize: typography.body.fontSize,
+    padding: 0,
+    lineHeight: 20,
+  },
+  actionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 1,
+  },
+  attachBtn: {
+    padding: spacing.sm,
+    marginRight: spacing.xs,
+    marginBottom: 2,
+  },
+  recordingContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  recordingDotWrap: {
+    width: 10,
+    height: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#e74c3c",
+  },
+  recordTime: {
+    fontSize: 16,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  slideCancel: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   slideCancelTxt: { fontSize: 14 },
 });
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { spacing, radius, typography, shadows } from "../../theme/designTokens";
 
 const ChatHeader = React.memo(({ 
   navigation, 
@@ -16,38 +17,52 @@ const ChatHeader = React.memo(({
   border,
   user
 }) => {
+  const copper = "#C4734A";
+  
   return (
     <View style={[s.header, { backgroundColor: headerBg, borderBottomColor: border }]}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-        <Ionicons name="arrow-back" size={24} color={textMain} />
+      <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} activeOpacity={0.6}>
+        <Ionicons name="arrow-back" size={22} color={textMain} />
       </TouchableOpacity>
-      <TouchableOpacity onPress={onProfilePress} activeOpacity={0.8}>
-        <View style={[s.avatar, { backgroundColor: isDark ? "#2a3942" : "#1a1a2e" }]}>
+      
+      <TouchableOpacity onPress={onProfilePress} activeOpacity={0.7} style={s.avatarTouch}>
+        <View style={[s.avatar, { backgroundColor: isDark ? "#2C2C2E" : "#F1D7D1" }]}>
           {displayPic ? (
             <Image source={{ uri: displayPic }} style={s.avatarImg} />
           ) : (
-            <Text style={s.avatarTxt}>{displayName?.charAt(0)?.toUpperCase()}</Text>
+            <Text style={[s.avatarTxt, { color: isDark ? "#FFFFFF" : "#C4734A" }]}>{displayName?.charAt(0)?.toUpperCase()}</Text>
           )}
         </View>
+        {isOnline && (
+          <View style={[s.onlineDot, { borderColor: headerBg, backgroundColor: copper }]} />
+        )}
       </TouchableOpacity>
+      
       <View style={s.headerInfo}>
         <Text style={[s.headerName, { color: textMain }]} numberOfLines={1}>{displayName}</Text>
-        <Text style={[s.headerStatus, { color: isReceiverTyping ? "#25D366" : isOnline ? "#2ecc71" : textSub }]}>
-          {isReceiverTyping ? "Typing..." : isOnline ? "Online" : "Offline"}
+        <Text style={[
+          s.headerStatus, 
+          { color: isReceiverTyping ? copper : isOnline ? copper : textSub },
+          isReceiverTyping && s.typingText,
+        ]}>
+          {isReceiverTyping ? "typing..." : isOnline ? "Online" : "offline"}
         </Text>
       </View>
+      
       <View style={s.headerActions}>
         <TouchableOpacity 
-          style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}
+          style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}
           onPress={() => navigation.navigate('VideoCallScreen', { user, isCaller: true })}
+          activeOpacity={0.6}
         >
-          <Ionicons name="videocam-outline" size={22} color={textMain} />
+          <Ionicons name="videocam-outline" size={20} color={textMain} />
         </TouchableOpacity>
         <TouchableOpacity 
-          style={[s.headerIconBtn, { backgroundColor: isDark ? "#2a3942" : "#f5f5f5" }]}
+          style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}
           onPress={() => navigation.navigate('CallScreen', { user, isCaller: true })}
+          activeOpacity={0.6}
         >
-          <Ionicons name="call-outline" size={20} color={textMain} />
+          <Ionicons name="call-outline" size={19} color={textMain} />
         </TouchableOpacity>
       </View>
     </View>
@@ -68,18 +83,62 @@ const ChatHeader = React.memo(({
 
 const s = StyleSheet.create({
   header: {
-    flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 8, zIndex: 10
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 0.5,
+    ...shadows.md,
+    zIndex: 10,
   },
-  backBtn: { padding: 4 },
-  avatar: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", marginLeft: 4 },
-  avatarImg: { width: "100%", height: "100%", borderRadius: 20 },
-  avatarTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  headerInfo: { flex: 1, marginLeft: 10 },
-  headerName: { fontSize: 17, fontWeight: "700" },
-  headerStatus: { fontSize: 12, marginTop: 1 },
-  headerActions: { flexDirection: "row", gap: 4 },
-  headerIconBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center" },
+  backBtn: { 
+    padding: spacing.xs,
+    marginRight: spacing.xs,
+  },
+  avatarTouch: {
+    position: "relative",
+  },
+  avatar: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: radius.avatar.md, 
+    justifyContent: "center", 
+    alignItems: "center",
+  },
+  avatarImg: { width: "100%", height: "100%", borderRadius: radius.avatar.md },
+  avatarTxt: { fontSize: 16, fontWeight: "700" },
+  onlineDot: {
+    position: "absolute",
+    bottom: 0,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+  },
+  headerInfo: { flex: 1, marginLeft: spacing.sm + 2 },
+  headerName: {
+    fontSize: typography.headerName.fontSize,
+    fontWeight: typography.headerName.fontWeight,
+    letterSpacing: typography.headerName.letterSpacing,
+  },
+  headerStatus: { 
+    fontSize: 12.5, 
+    marginTop: 1,
+    fontWeight: "400",
+  },
+  typingText: {
+    fontWeight: "500",
+    fontStyle: "italic",
+  },
+  headerActions: { flexDirection: "row", gap: spacing.sm - 2 },
+  headerIconBtn: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: radius.bubble, 
+    justifyContent: "center", 
+    alignItems: "center",
+  },
 });
 
 export default ChatHeader;

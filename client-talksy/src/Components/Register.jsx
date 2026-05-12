@@ -1,13 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import {
  View, Text, TextInput, TouchableOpacity, StyleSheet,
- ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Switch,
+ ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import SuccessPopup from "./SuccessPopup";
+import { ThemeContext } from "../context/ThemeContext";
 
 const API = "https://talksy-3py1.onrender.com/api/users";
 
@@ -21,6 +22,15 @@ export default function Register({ setIsLoggedIn }) {
  const [agreed, setAgreed] = useState(false);
  const [showSuccess, setShowSuccess] = useState(false);
  const nav = useNavigation();
+ const { isDark } = useContext(ThemeContext);
+
+ // Theme colors
+ const bg = isDark ? "#121212" : "#F7ECE9";
+ const surface = isDark ? "#1C1C1E" : "#FFFFFF";
+ const textMain = isDark ? "#FFFFFF" : "#2B1F1A";
+ const textSub = isDark ? "#A1A1A6" : "#8E5A55";
+ const border = isDark ? "#2A2A2D" : "#F1D7D1";
+ const copper = "#C4734A";
 
  const validate = () => {
   const e = {};
@@ -67,53 +77,60 @@ export default function Register({ setIsLoggedIn }) {
  };
 
  return (
-  <View style={s.container}>
+  <View style={[s.container, { backgroundColor: bg }]}>
    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
      {/* Back */}
      {nav.canGoBack() && (
-      <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-       <Ionicons name="arrow-back" size={22} color="#1a1a2e" />
+      <TouchableOpacity style={[s.backBtn, { borderColor: border }]} onPress={() => nav.goBack()}>
+       <Ionicons name="arrow-back" size={22} color={textMain} />
       </TouchableOpacity>
      )}
 
      {/* Header */}
-     <Text style={s.title}>Create your account</Text>
-     <Text style={s.sub}>Provide a unique username, mobile, and password{"\n"}to create your account and get started.</Text>
+     <Text style={[s.title, { color: textMain }]}>Create your account</Text>
+     <Text style={[s.sub, { color: textSub }]}>Provide a unique username, mobile, and password{"\n"}to create your account and get started.</Text>
 
      {/* Username */}
-     <Text style={s.label}>Username</Text>
-     <TextInput
-      style={[s.input, errors.username && s.errB]}
-      placeholder="e.g. talksy_user"
-      placeholderTextColor="#aaa"
-      autoCapitalize="none"
-      value={username}
-      onChangeText={(t) => { setUsername(t.replace(/\s/g, '')); clearErr("username"); }}
-     />
+     <Text style={[s.label, { color: textSub }]}>Username</Text>
+     <View style={[s.inputWrap, { backgroundColor: surface, borderColor: errors.username ? "#e74c3c" : border }]}>
+      <Ionicons name="person-outline" size={18} color={textSub} style={s.inputIcon} />
+      <TextInput
+       style={[s.input, { color: textMain }]}
+       placeholder="e.g. klyro_user"
+       placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
+       autoCapitalize="none"
+       value={username}
+       onChangeText={(t) => { setUsername(t.replace(/\s/g, '')); clearErr("username"); }}
+      />
+     </View>
      {errors.username && <Text style={s.err}>{errors.username}</Text>}
 
      {/* Mobile */}
-     <Text style={s.label}>Mobile Number</Text>
-     <TextInput
-      style={[s.input, errors.mobile && s.errB]}
-      placeholder="Enter mobile number"
-      placeholderTextColor="#aaa"
-      keyboardType="number-pad"
-      maxLength={10}
-      value={mobile}
-      onChangeText={(t) => { setMobile(t.replace(/\D/g, "").slice(0, 10)); clearErr("mobile"); }}
-     />
+     <Text style={[s.label, { color: textSub }]}>Mobile Number</Text>
+     <View style={[s.inputWrap, { backgroundColor: surface, borderColor: errors.mobile ? "#e74c3c" : border }]}>
+      <Ionicons name="call-outline" size={18} color={textSub} style={s.inputIcon} />
+      <TextInput
+       style={[s.input, { color: textMain }]}
+       placeholder="Enter mobile number"
+       placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
+       keyboardType="number-pad"
+       maxLength={10}
+       value={mobile}
+       onChangeText={(t) => { setMobile(t.replace(/\D/g, "").slice(0, 10)); clearErr("mobile"); }}
+      />
+     </View>
      {errors.mobile && <Text style={s.err}>{errors.mobile}</Text>}
 
      {/* Password */}
-     <Text style={s.label}>Password</Text>
-     <View style={[s.passBox, errors.password && s.errB]}>
+     <Text style={[s.label, { color: textSub }]}>Password</Text>
+     <View style={[s.inputWrap, { backgroundColor: surface, borderColor: errors.password ? "#e74c3c" : border }]}>
+      <Ionicons name="lock-closed-outline" size={18} color={textSub} style={s.inputIcon} />
       <TextInput
-       style={s.passInput}
+       style={[s.input, { color: textMain }]}
        placeholder="Create password"
-       placeholderTextColor="#aaa"
+       placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
        secureTextEntry={!showPwd}
        autoCapitalize="none"
        autoCorrect={false}
@@ -121,24 +138,20 @@ export default function Register({ setIsLoggedIn }) {
        onChangeText={(t) => { setPassword(t); clearErr("password"); }}
       />
       <TouchableOpacity onPress={() => setShowPwd(!showPwd)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-       <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color="#888" />
+       <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={textSub} />
       </TouchableOpacity>
      </View>
      {errors.password && <Text style={s.err}>{errors.password}</Text>}
 
      {/* Terms */}
-     <View style={s.termsRow}>
-      <Switch
-       value={agreed}
-       onValueChange={(v) => { setAgreed(v); clearErr("terms"); }}
-       trackColor={{ false: "#ddd", true: "#1a1a2e" }}
-       thumbColor="#fff"
-       style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-      />
-      <Text style={s.termsTxt}>
-       I agree to the <Text style={s.termsLink}>Terms & Privacy Policy</Text>
+     <TouchableOpacity style={s.termsRow} onPress={() => { setAgreed(!agreed); clearErr("terms"); }} activeOpacity={0.7}>
+      <View style={[s.checkbox, { borderColor: copper, backgroundColor: agreed ? copper : "transparent" }]}>
+       {agreed && <Ionicons name="checkmark" size={14} color="#fff" />}
+      </View>
+      <Text style={[s.termsTxt, { color: textSub }]}>
+       I agree to the <Text style={[s.termsLink, { color: copper }]}>Terms & Privacy Policy</Text>
       </Text>
-     </View>
+     </TouchableOpacity>
      {errors.terms && <Text style={s.err}>{errors.terms}</Text>}
 
      {/* API Error */}
@@ -150,9 +163,9 @@ export default function Register({ setIsLoggedIn }) {
      </TouchableOpacity>
 
      {/* Link */}
-     <Text style={s.linkRow}>
+     <Text style={[s.linkRow, { color: textSub }]}>
       Already have an account?{" "}
-      <Text style={s.linkBold} onPress={() => nav.navigate("Login")}>Sign In</Text>
+      <Text style={[s.linkBold, { color: copper }]} onPress={() => nav.navigate("Login")}>Sign In</Text>
      </Text>
 
     </ScrollView>
@@ -170,25 +183,31 @@ export default function Register({ setIsLoggedIn }) {
 }
 
 const s = StyleSheet.create({
- container: { flex: 1, backgroundColor: "#fff" },
+ container: { flex: 1 },
  scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 56, paddingBottom: 30 },
  backBtn: {
   width: 42, height: 42, borderRadius: 12, borderWidth: 1.2,
-  borderColor: "#e5e5e5", justifyContent: "center", alignItems: "center", marginBottom: 28,
+  justifyContent: "center", alignItems: "center", marginBottom: 28,
  },
- title: { fontSize: 28, fontWeight: "800", color: "#1a1a2e", marginBottom: 8 },
- sub: { fontSize: 14, color: "#888", lineHeight: 20, marginBottom: 30 },
- label: { fontSize: 13, color: "#888", marginBottom: 8, marginTop: 18 },
- input: { borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5", paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
- passBox: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5" },
- passInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
- errB: { borderBottomColor: "#e74c3c" },
+ title: { fontSize: 28, fontWeight: "800", marginBottom: 8 },
+ sub: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
+ label: { fontSize: 13, fontWeight: "500", marginBottom: 8, marginTop: 16 },
+ inputWrap: {
+  flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1,
+  paddingHorizontal: 14, height: 52,
+ },
+ inputIcon: { marginRight: 10 },
+ input: { flex: 1, fontSize: 15, height: "100%" },
  err: { color: "#e74c3c", fontSize: 12, marginTop: 4 },
- termsRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
- termsTxt: { fontSize: 13, color: "#555", flex: 1 },
- termsLink: { fontWeight: "700", color: "#1a1a2e" },
- btn: { backgroundColor: "#1a1a2e", paddingVertical: 16, borderRadius: 14, alignItems: "center", marginTop: 32 },
+ termsRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 20 },
+ checkbox: {
+  width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+  justifyContent: "center", alignItems: "center",
+ },
+ termsTxt: { fontSize: 13, flex: 1 },
+ termsLink: { fontWeight: "700" },
+ btn: { backgroundColor: "#C4734A", paddingVertical: 16, borderRadius: 14, alignItems: "center", marginTop: 28 },
  btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
- linkRow: { textAlign: "center", marginTop: 22, fontSize: 14, color: "#888" },
- linkBold: { fontWeight: "700", color: "#1a1a2e" },
+ linkRow: { textAlign: "center", marginTop: 22, fontSize: 14 },
+ linkBold: { fontWeight: "700" },
 });

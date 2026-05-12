@@ -1,148 +1,127 @@
-import React, { useRef, useContext } from "react";
-import {
-    View, Text, TouchableOpacity, StyleSheet, Platform, Animated,
-} from "react-native";
+import React, { useRef, useEffect } from "react";
+import { View, TouchableOpacity, StyleSheet, Animated, Platform, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { ThemeContext } from "../context/ThemeContext";
+import * as Haptics from "expo-haptics";
+import { useThemeColors } from "../hooks/chat/useThemeColors";
+import { spacing, radius, shadows, timing } from "../theme/designTokens";
 
-const PURPLE = "#5B5FC7";
+const CustomTabBar = ({ state, descriptors, navigation }) => {
+    const { bg, textPrimary, textTertiary, accent, myBubble, tabBarBg, tabInactive, isDark } = useThemeColors();
 
-export default function CustomTabBar({ state, descriptors, navigation }) {
-    const { isDark } = useContext(ThemeContext);
+    const renderTab = (route, index) => {
+        const { options } = descriptors[route.key];
+        const isFocused = state.index === index;
 
-    const bg = isDark ? "#111b21" : "#fff";
-    const border = isDark ? "#202c33" : "#f0f0f0";
-    const textSub = isDark ? "#8696a0" : "#667781";
+        const onPress = () => {
+            const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+            });
 
-    // FAB animation
-    const fabScale = useRef(new Animated.Value(1)).current;
+            if (!isFocused && !event.defaultPrevented) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate(route.name);
+            }
+        };
 
-    const tabs = [
-        { name: "HomeTab", label: "Chats", iconActive: "chatbubbles", iconInactive: "chatbubbles-outline" },
-        { name: "SettingsTab", label: "Profile", iconActive: "person", iconInactive: "person-outline" },
-    ];
+        const getIconName = (name) => {
+            switch (name) {
+                case "Home": return isFocused ? "chatbubble-ellipses" : "chatbubble-ellipses-outline";
+                case "Calls": return isFocused ? "call" : "call-outline";
+                case "Status": return isFocused ? "aperture" : "aperture-outline";
+                case "Settings": return isFocused ? "settings" : "settings-outline";
+                default: return "help";
+            }
+        };
+
+        return (
+            <TouchableOpacity
+                key={index}
+                onPress={onPress}
+                style={s.tabItem}
+                activeOpacity={0.6}
+            >
+                <Ionicons
+                    name={getIconName(route.name)}
+                    size={24}
+                    color={isFocused ? accent : tabInactive}
+                />
+                <Text style={[s.tabLabel, { color: isFocused ? accent : tabInactive }]}>
+                    {route.name === "Home" ? "Chats" : route.name}
+                </Text>
+                {isFocused && (
+                    <Animated.View style={[s.indicator, { backgroundColor: accent }]} />
+                )}
+            </TouchableOpacity>
+        );
+    };
 
     return (
-        <View style={s.wrapper}>
-            {/* ─── Floating Container ─── */}
-            <View style={[s.tabBarContainer, { backgroundColor: bg }]}>
-                {/* Center Bump */}
-                <View style={[s.centerBump, { backgroundColor: bg }]} />
+        <View style={s.container}>
+            {/* FAB */}
+            <TouchableOpacity
+                style={[s.fab, { backgroundColor: accent, ...shadows.copper }]}
+                activeOpacity={0.8}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    navigation.navigate("NewChat");
+                }}
+            >
+                <Ionicons name="chatbubble-ellipses" size={26} color="#fff" />
+            </TouchableOpacity>
 
-                {/* ─── Bottom Tab Bar ─── */}
-                <View style={s.tabBarInner}>
-                    {tabs.map((tab, index) => {
-                        const isFocused = state.index === index;
-                        const iconName = isFocused ? tab.iconActive : tab.iconInactive;
-                        const color = isFocused ? PURPLE : textSub;
-
-                        const onPress = () => {
-                            const event = navigation.emit({
-                                type: "tabPress",
-                                target: state.routes[index].key,
-                                canPreventDefault: true,
-                            });
-
-                            if (!isFocused && !event.defaultPrevented) {
-                                navigation.navigate(state.routes[index].name);
-                            }
-                        };
-
-                        return (
-                            <React.Fragment key={tab.name}>
-                                <TouchableOpacity style={s.navItem} onPress={onPress} activeOpacity={0.7}>
-                                    <View style={s.navIconWrap}>
-                                        <Ionicons name={iconName} size={28} color={color} />
-                                    </View>
-                                    <Text style={[s.navLabel, { color, fontWeight: isFocused ? "700" : "500" }]}>
-                                        {tab.label}
-                                    </Text>
-                                </TouchableOpacity>
-                                {index === 0 && <View style={s.spacer} />}
-                            </React.Fragment>
-                        );
-                    })}
-                </View>
+            {/* Tab Bar */}
+            <View style={[s.tabBar, { backgroundColor: tabBarBg, borderTopColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}>
+                {state.routes.map((route, index) => renderTab(route, index))}
             </View>
-
-            {/* ─── Floating Purple FAB ─── */}
-            <Animated.View style={[s.fabWrap, { transform: [{ scale: fabScale }] }]}>
-                <TouchableOpacity
-                    style={s.fab}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                        navigation.navigate("NewChat");
-                    }}
-                >
-                    <Ionicons name="add" size={36} color="#fff" />
-                </TouchableOpacity>
-            </Animated.View>
         </View>
     );
-}
+};
 
 const s = StyleSheet.create({
-    wrapper: {
+    container: {
         position: "absolute",
-        bottom: Platform.OS === "ios" ? 30 : 20,
-        left: 20,
-        right: 20,
-        // Removed Android elevation from transparent wrapper to fix the ugly rectangular shadow
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.12,
-        shadowRadius: 20,
+        bottom: 0,
+        left: 0,
+        right: 0,
     },
-    tabBarContainer: {
-        width: "100%",
-        height: 74,
-        borderRadius: 37,
-    },
-    centerBump: {
-        position: "absolute",
-        top: -26,
-        left: "50%",
-        marginLeft: -38, // 76 / 2
-        width: 76,
-        height: 76,
-        borderRadius: 38,
-    },
-    tabBarInner: {
-        flex: 1,
+    tabBar: {
         flexDirection: "row",
+        height: Platform.OS === "ios" ? 88 : 72,
+        paddingBottom: Platform.OS === "ios" ? 28 : 12,
+        borderTopWidth: 0.5,
+        justifyContent: "space-around",
+        alignItems: "center",
+    },
+    tabItem: {
+        flex: 1,
+        alignItems: "center",
         justifyContent: "center",
-        alignItems: "center",
-        paddingHorizontal: 20,
+        gap: 4,
     },
-    navItem: {
-        padding: 6,
-        alignItems: "center",
-        minWidth: 80,
+    tabLabel: {
+        fontSize: 11,
+        fontWeight: "600",
     },
-    spacer: {
-        width: 100, // Space for the center FAB
-    },
-    navLabel: { fontSize: 12, marginTop: 4, fontWeight: "500" },
-    navIconWrap: {
-        justifyContent: "center", alignItems: "center",
-    },
-
-    // Floating Action Button
-    fabWrap: {
+    indicator: {
         position: "absolute",
-        top: -17, // Centers the 60px FAB inside the 76px bump (bump top -26, center is 12. 12 - 30 = -18)
-        left: "50%",
-        marginLeft: -30,
-        zIndex: 10,
-        elevation: 12,
+        top: -12,
+        width: 18,
+        height: 3,
+        borderRadius: 2,
     },
     fab: {
-        width: 60, height: 60, borderRadius: 30,
-        backgroundColor: PURPLE,
-        justifyContent: "center", alignItems: "center",
-        shadowColor: "#5B5FC7",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
+        position: "absolute",
+        bottom: Platform.OS === "ios" ? 100 : 88,
+        right: 20,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 100,
     },
 });
+
+export default CustomTabBar;

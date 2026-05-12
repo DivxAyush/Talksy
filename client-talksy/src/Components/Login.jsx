@@ -1,13 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import {
  View, Text, TextInput, TouchableOpacity, StyleSheet,
- ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Switch,
+ ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import SuccessPopup from "./SuccessPopup";
+import { ThemeContext } from "../context/ThemeContext";
 
 const API = "https://talksy-3py1.onrender.com/api/users";
 
@@ -17,9 +18,19 @@ export default function Login({ setIsLoggedIn }) {
  const [errors, setErrors] = useState({});
  const [loading, setLoading] = useState(false);
  const [showPwd, setShowPwd] = useState(false);
- const [remember, setRemember] = useState(false);
+ const [acceptTerms, setAcceptTerms] = useState(false);
  const [showSuccess, setShowSuccess] = useState(false);
  const nav = useNavigation();
+ const { isDark } = useContext(ThemeContext);
+
+ // Theme colors
+ const bg = isDark ? "#121212" : "#F7ECE9";
+ const surface = isDark ? "#1C1C1E" : "#FFFFFF";
+ const textMain = isDark ? "#FFFFFF" : "#2B1F1A";
+ const textSub = isDark ? "#A1A1A6" : "#8E5A55";
+ const border = isDark ? "#2A2A2D" : "#F1D7D1";
+ const copper = "#C4734A";
+ const copperLight = "rgba(196, 115, 74, 0.12)";
 
  const validate = () => {
   const e = {};
@@ -56,41 +67,43 @@ export default function Login({ setIsLoggedIn }) {
  };
 
  return (
-  <View style={s.container}>
+  <View style={[s.container, { backgroundColor: bg }]}>
    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-     {/* Back */}
-     {nav.canGoBack() && (
-      <TouchableOpacity style={s.backBtn} onPress={() => nav.goBack()}>
-       <Ionicons name="arrow-back" size={22} color="#1a1a2e" />
-      </TouchableOpacity>
-     )}
+     {/* Logo */}
+     <View style={s.logoWrap}>
+      <Image source={require("../../assets/KlyroLightLogo.png")} style={s.logoImg} resizeMode="contain" />
+     </View>
 
      {/* Header */}
-     <Text style={s.title}>Welcome Back</Text>
-     <Text style={s.sub}>Stay connected by signing in with your{"\n"}mobile number and password.</Text>
+     <Text style={[s.title, { color: textMain }]}>Sign In to Klyro</Text>
+     <Text style={[s.sub, { color: textSub }]}>First time here? <Text style={[s.linkBold, { color: copper }]} onPress={() => nav.navigate("Register")}>Sign Up</Text></Text>
 
-     {/* Mobile */}
-     <Text style={s.label}>Mobile Number</Text>
-     <TextInput
-      style={[s.input, errors.mobile && s.errB]}
-      placeholder="Enter mobile number"
-      placeholderTextColor="#aaa"
-      keyboardType="number-pad"
-      maxLength={10}
-      value={mobile}
-      onChangeText={(t) => { setMobile(t.replace(/\D/g, "").slice(0, 10)); clearErr("mobile"); }}
-     />
+     {/* Email/Mobile */}
+     <Text style={[s.label, { color: textSub }]}>Mobile Number *</Text>
+     <View style={[s.inputWrap, { backgroundColor: surface, borderColor: errors.mobile ? "#e74c3c" : border }]}>
+      <Ionicons name="call-outline" size={18} color={textSub} style={s.inputIcon} />
+      <TextInput
+       style={[s.input, { color: textMain }]}
+       placeholder="Enter mobile number"
+       placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
+       keyboardType="number-pad"
+       maxLength={10}
+       value={mobile}
+       onChangeText={(t) => { setMobile(t.replace(/\D/g, "").slice(0, 10)); clearErr("mobile"); }}
+      />
+     </View>
      {errors.mobile && <Text style={s.err}>{errors.mobile}</Text>}
 
      {/* Password */}
-     <Text style={s.label}>Password</Text>
-     <View style={[s.passBox, errors.password && s.errB]}>
+     <Text style={[s.label, { color: textSub }]}>Password *</Text>
+     <View style={[s.inputWrap, { backgroundColor: surface, borderColor: errors.password ? "#e74c3c" : border }]}>
+      <Ionicons name="lock-closed-outline" size={18} color={textSub} style={s.inputIcon} />
       <TextInput
-       style={s.passInput}
+       style={[s.input, { color: textMain }]}
        placeholder="Enter password"
-       placeholderTextColor="#aaa"
+       placeholderTextColor={isDark ? "#636366" : "#B08F8A"}
        secureTextEntry={!showPwd}
        autoCapitalize="none"
        autoCorrect={false}
@@ -98,27 +111,18 @@ export default function Login({ setIsLoggedIn }) {
        onChangeText={(t) => { setPassword(t); clearErr("password"); }}
       />
       <TouchableOpacity onPress={() => setShowPwd(!showPwd)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-       <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color="#888" />
+       <Ionicons name={showPwd ? "eye-off-outline" : "eye-outline"} size={20} color={textSub} />
       </TouchableOpacity>
      </View>
      {errors.password && <Text style={s.err}>{errors.password}</Text>}
 
-     {/* Remember + Forgot */}
-     <View style={s.optionRow}>
-      <View style={s.rememberRow}>
-       <Switch
-        value={remember}
-        onValueChange={setRemember}
-        trackColor={{ false: "#ddd", true: "#1a1a2e" }}
-        thumbColor="#fff"
-        style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-       />
-       <Text style={s.rememberTxt}>Remember me</Text>
+     {/* Terms checkbox */}
+     <TouchableOpacity style={s.termsRow} onPress={() => setAcceptTerms(!acceptTerms)} activeOpacity={0.7}>
+      <View style={[s.checkbox, { borderColor: copper, backgroundColor: acceptTerms ? copper : "transparent" }]}>
+       {acceptTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
       </View>
-      <TouchableOpacity onPress={() => nav.navigate("ForgotPassword")}>
-       <Text style={s.forgotTxt}>Forgot Password?</Text>
-      </TouchableOpacity>
-     </View>
+      <Text style={[s.termsTxt, { color: textSub }]}>Accept sign in with Touch/Face ID</Text>
+     </TouchableOpacity>
 
      {/* API Error */}
      {errors.api && <Text style={[s.err, { textAlign: "center", marginTop: 8 }]}>{errors.api}</Text>}
@@ -128,11 +132,33 @@ export default function Login({ setIsLoggedIn }) {
       {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnTxt}>Sign In</Text>}
      </TouchableOpacity>
 
-     {/* Link */}
-     <Text style={s.linkRow}>
-      Don't have an account?{" "}
-      <Text style={s.linkBold} onPress={() => nav.navigate("Register")}>Sign Up</Text>
-     </Text>
+     {/* Forgot Password */}
+     <TouchableOpacity onPress={() => nav.navigate("ForgotPassword")} style={s.forgotWrap}>
+      <Text style={[s.forgotTxt, { color: textSub }]}>Forgot Password?</Text>
+     </TouchableOpacity>
+
+     {/* Divider */}
+     <View style={s.dividerRow}>
+      <View style={[s.dividerLine, { backgroundColor: border }]} />
+      <Text style={[s.dividerText, { color: textSub }]}>or sign in with</Text>
+      <View style={[s.dividerLine, { backgroundColor: border }]} />
+     </View>
+
+     {/* Social Buttons */}
+     <View style={s.socialRow}>
+      <TouchableOpacity style={[s.socialBtn, { backgroundColor: surface, borderColor: border }]}>
+       <Text style={s.socialIcon}>G</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[s.socialBtn, { backgroundColor: surface, borderColor: border }]}>
+       <Ionicons name="logo-facebook" size={22} color="#1877F2" />
+      </TouchableOpacity>
+      <TouchableOpacity style={[s.socialBtn, { backgroundColor: surface, borderColor: border }]}>
+       <Ionicons name="logo-twitter" size={22} color="#1DA1F2" />
+      </TouchableOpacity>
+      <TouchableOpacity style={[s.socialBtn, { backgroundColor: surface, borderColor: border }]}>
+       <Ionicons name="logo-apple" size={22} color={textMain} />
+      </TouchableOpacity>
+     </View>
 
     </ScrollView>
    </KeyboardAvoidingView>
@@ -149,26 +175,41 @@ export default function Login({ setIsLoggedIn }) {
 }
 
 const s = StyleSheet.create({
- container: { flex: 1, backgroundColor: "#fff" },
- scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 56, paddingBottom: 30 },
- backBtn: {
-  width: 42, height: 42, borderRadius: 12, borderWidth: 1.2,
-  borderColor: "#e5e5e5", justifyContent: "center", alignItems: "center", marginBottom: 28,
+ container: { flex: 1 },
+ scroll: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 60, paddingBottom: 30 },
+ logoWrap: { alignItems: "center", marginBottom: 32 },
+ logoImg: { width: 70, height: 70 },
+ title: { fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: 8 },
+ sub: { fontSize: 14, textAlign: "center", marginBottom: 32 },
+ label: { fontSize: 13, fontWeight: "500", marginBottom: 8, marginTop: 16 },
+ inputWrap: {
+  flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1,
+  paddingHorizontal: 14, height: 52,
  },
- title: { fontSize: 28, fontWeight: "800", color: "#1a1a2e", marginBottom: 8 },
- sub: { fontSize: 14, color: "#888", lineHeight: 20, marginBottom: 30 },
- label: { fontSize: 13, color: "#888", marginBottom: 8, marginTop: 18 },
- input: { borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5", paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
- passBox: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1.2, borderBottomColor: "#e5e5e5" },
- passInput: { flex: 1, paddingVertical: 12, fontSize: 15, color: "#1a1a2e" },
- errB: { borderBottomColor: "#e74c3c" },
+ inputIcon: { marginRight: 10 },
+ input: { flex: 1, fontSize: 15, height: "100%" },
  err: { color: "#e74c3c", fontSize: 12, marginTop: 4 },
- optionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16 },
- rememberRow: { flexDirection: "row", alignItems: "center", gap: 4 },
- rememberTxt: { fontSize: 13, color: "#555" },
- forgotTxt: { fontSize: 13, fontWeight: "600", color: "#1a1a2e" },
- btn: { backgroundColor: "#1a1a2e", paddingVertical: 16, borderRadius: 14, alignItems: "center", marginTop: 32 },
+ termsRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 20 },
+ checkbox: {
+  width: 22, height: 22, borderRadius: 6, borderWidth: 1.5,
+  justifyContent: "center", alignItems: "center",
+ },
+ termsTxt: { fontSize: 13 },
+ btn: {
+  backgroundColor: "#C4734A", paddingVertical: 16, borderRadius: 14,
+  alignItems: "center", marginTop: 28,
+ },
  btnTxt: { color: "#fff", fontSize: 16, fontWeight: "700" },
- linkRow: { textAlign: "center", marginTop: 22, fontSize: 14, color: "#888" },
- linkBold: { fontWeight: "700", color: "#1a1a2e" },
+ forgotWrap: { alignItems: "center", marginTop: 16 },
+ forgotTxt: { fontSize: 13, fontWeight: "500" },
+ dividerRow: { flexDirection: "row", alignItems: "center", marginTop: 28, marginBottom: 20 },
+ dividerLine: { flex: 1, height: 1 },
+ dividerText: { marginHorizontal: 12, fontSize: 13 },
+ socialRow: { flexDirection: "row", justifyContent: "center", gap: 16 },
+ socialBtn: {
+  width: 50, height: 50, borderRadius: 14, borderWidth: 1,
+  justifyContent: "center", alignItems: "center",
+ },
+ socialIcon: { fontSize: 20, fontWeight: "700", color: "#EA4335" },
+ linkBold: { fontWeight: "700" },
 });
