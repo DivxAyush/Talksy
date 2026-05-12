@@ -1,27 +1,24 @@
 {
   "expo": {
-    "name": "Talksy",
+    "name": "Klyro",
     "slug": "client-talksy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/TalksyAppIcon.png",
+    "icon": "./assets/KlyroLightLogo.png",
     "userInterfaceStyle": "light",
-
     "splash": {
-      "image": "./assets/TalksySS.png",
+      "image": "./assets/KlyroLightLogo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "ios": {
       "supportsTablet": true
     },
-
     "android": {
       "package": "com.talksy.chat",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/TalksyAppIcon.png",
+        "foregroundImage": "./assets/KlyroLightLogo.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
@@ -29,27 +26,23 @@
         "VIBRATE"
       ]
     },
-
     "web": {
       "favicon": "./assets/favicon.png"
     },
-
     "plugins": [
       [
         "expo-notifications",
         {
-          "icon": "./assets/TalksyAppIcon.png",
-          "color": "#25D366"
+          "icon": "./assets/KlyroLightLogo.png",
+          "color": "#C4734A"
         }
       ]
     ],
-
     "extra": {
       "eas": {
         "projectId": "593f69ca-2eeb-4e1b-8a6c-4569f6cf92bb"
       }
     },
-
     "owner": "ayush2133k"
   }
 }

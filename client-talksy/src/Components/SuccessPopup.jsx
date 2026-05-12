@@ -1,11 +1,20 @@
-import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated, Modal } from "react-native";
+import React, { useEffect, useRef, useContext } from "react";
+import { View, Text, StyleSheet, Animated, Modal, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { ThemeContext } from "../context/ThemeContext";
+import { useThemeColors } from "../hooks/chat/useThemeColors";
 
 const COLORS = ["#FF6B6B", "#4ECDC4", "#FFD93D", "#6BCB77", "#4D96FF", "#FF6B9D", "#C084FC", "#FB923C"];
 const NUM = 28;
 
 export default function SuccessPopup({ visible, title, message, slogan, onAutoClose }) {
+ const { isDark } = useContext(ThemeContext) || { isDark: false };
+ const colors = useThemeColors();
+ const bg = isDark ? "#1C1C1E" : "#fff";
+ const textPrimary = isDark ? "#fff" : "#1a1a2e";
+ const textSecondary = isDark ? "#8696a0" : "#888";
+ const checkBg = "#C4734A";
+
  const slideY = useRef(new Animated.Value(400)).current;
  const fade = useRef(new Animated.Value(0)).current;
  const scale = useRef(new Animated.Value(0)).current;
@@ -74,8 +83,8 @@ export default function SuccessPopup({ visible, title, message, slogan, onAutoCl
   <Modal transparent visible statusBarTranslucent animationType="none">
    <View style={s.wrap}>
     <Animated.View style={[s.overlay, { opacity: fade }]} />
-    <Animated.View style={[s.sheet, { transform: [{ translateY: slideY }] }]}>
-     <View style={s.handle} />
+    <Animated.View style={[s.sheet, { transform: [{ translateY: slideY }], backgroundColor: bg }]}>
+     <View style={[s.handle, { backgroundColor: isDark ? "#333" : "#ddd" }]} />
 
      {/* Confetti */}
      <View style={s.confettiWrap}>
@@ -100,15 +109,15 @@ export default function SuccessPopup({ visible, title, message, slogan, onAutoCl
      </View>
 
      {/* Checkmark */}
-     <Animated.View style={[s.circle, { transform: [{ scale }] }]}>
+     <Animated.View style={[s.circle, { transform: [{ scale }], backgroundColor: checkBg }]}>
       <Ionicons name="checkmark-sharp" size={38} color="#fff" />
      </Animated.View>
 
-     <Text style={s.title}>{title}</Text>
-     <Text style={s.msg}>{message}</Text>
+     <Text style={[s.title, { color: textPrimary }]}>{title}</Text>
+     <Text style={[s.msg, { color: textSecondary }]}>{message}</Text>
 
      <Animated.View style={{ opacity: sloganFade }}>
-      <Text style={s.slogan}>{slogan || "Let's start chatting! \u{1F4AC}"}</Text>
+      <Text style={[s.slogan, { color: textPrimary }]}>{slogan || "Let's start chatting! \u{1F4AC}"}</Text>
      </Animated.View>
     </Animated.View>
    </View>
@@ -120,19 +129,19 @@ const s = StyleSheet.create({
  wrap: { flex: 1, justifyContent: "flex-end" },
  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
  sheet: {
-  backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28,
+  borderTopLeftRadius: 28, borderTopRightRadius: 28,
   paddingHorizontal: 28, paddingTop: 14, paddingBottom: 40, alignItems: "center", overflow: "hidden",
  },
- handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#ddd", marginBottom: 24 },
+ handle: { width: 40, height: 4, borderRadius: 2, marginBottom: 24 },
  confettiWrap: {
   position: "absolute", top: 80, alignSelf: "center",
   width: 1, height: 1, alignItems: "center", justifyContent: "center",
  },
  circle: {
-  width: 80, height: 80, borderRadius: 40, backgroundColor: "#2ecc71",
+  width: 80, height: 80, borderRadius: 40,
   justifyContent: "center", alignItems: "center", marginBottom: 20, zIndex: 2,
  },
- title: { fontSize: 22, fontWeight: "800", color: "#1a1a2e", marginBottom: 8 },
- msg: { fontSize: 14, color: "#888", textAlign: "center", lineHeight: 20, marginBottom: 16 },
- slogan: { fontSize: 16, fontWeight: "600", color: "#1a1a2e", textAlign: "center" },
+ title: { fontSize: 22, fontWeight: "800", marginBottom: 8 },
+ msg: { fontSize: 14, textAlign: "center", lineHeight: 20, marginBottom: 16 },
+ slogan: { fontSize: 16, fontWeight: "600", textAlign: "center" },
 });

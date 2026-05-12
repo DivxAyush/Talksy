@@ -1,11 +1,12 @@
 import React, { useContext } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Image, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Image, Platform, Modal } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ThemeContext } from "../context/ThemeContext";
 import { useThemeColors } from "../hooks/chat/useThemeColors";
 import { spacing, radius, typography, shadows, iconSize, avatarSize } from "../theme/designTokens";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import QRCode from "react-native-qrcode-svg";
 
 const SettingsItem = React.memo(({ icon, label, subLabel, value, onValueChange, onPress, isSwitch, isLast, color, iconBg, textPrimary, textSecondary, border, accent }) => (
     <TouchableOpacity
@@ -38,7 +39,20 @@ const SettingsItem = React.memo(({ icon, label, subLabel, value, onValueChange, 
 ));
 
 export default function Settings({ navigation, setIsLoggedIn }) {
-    const { isDark, toggleTheme, user } = useContext(ThemeContext);
+    const { isDark, toggleTheme } = useContext(ThemeContext);
+    const [user, setUser] = React.useState(null);
+    const [showQR, setShowQR] = React.useState(false);
+
+    React.useEffect(() => {
+        const loadUser = async () => {
+            const userStr = await AsyncStorage.getItem("user");
+            if (userStr) setUser(JSON.parse(userStr));
+        };
+        const unsubscribe = navigation.addListener('focus', loadUser);
+        loadUser();
+        return unsubscribe;
+    }, [navigation]);
+
     const colors = useThemeColors();
     const { bg, surface, textPrimary, textSecondary, border, accent, danger } = colors;
 
@@ -74,7 +88,9 @@ export default function Settings({ navigation, setIsLoggedIn }) {
                         {user?.about || "Available"}
                     </Text>
                 </View>
-                <Ionicons name="qr-code-outline" size={22} color={accent} />
+                <TouchableOpacity onPress={() => setShowQR(true)} style={{ padding: 8 }}>
+                    <Ionicons name="qr-code-outline" size={24} color={accent} />
+                </TouchableOpacity>
             </TouchableOpacity>
 
             {/* Settings Sections */}
@@ -162,6 +178,48 @@ export default function Settings({ navigation, setIsLoggedIn }) {
 
             <Text style={[s.versionTxt, { color: textSecondary }]}>Klyro v1.0.0</Text>
             <View style={{ height: 120 }} />
+
+            {/* QR Code Modal */}
+            <Modal visible={showQR} transparent animationType="fade" onRequestClose={() => setShowQR(false)}>
+                <View style={s.qrOverlay}>
+                    <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowQR(false)} />
+                    <View style={[s.qrCard, { backgroundColor: surface }]}>
+                        <View style={s.qrHeader}>
+                            <View style={[s.qrAvatar, { backgroundColor: isDark ? "#2C2C2E" : "#F1D7D1" }]}>
+                                {user?.profilePic ? (
+                                    <Image source={{ uri: user.profilePic }} style={s.avatarImg} />
+                                ) : (
+                                    <Text style={[s.avatarTxt, { color: isDark ? "#fff" : "#C4734A" }]}>{user?.username?.charAt(0)?.toUpperCase()}</Text>
+                                )}
+                            </View>
+                            <View style={s.qrInfo}>
+                                <Text style={[s.qrName, { color: textPrimary }]}>{user?.name || user?.username || "Klyro User"}</Text>
+                                <Text style={[s.qrUsername, { color: textSecondary }]}>@{user?.username || "user"}</Text>
+                            </View>
+                        </View>
+                        
+                        <View style={s.qrCodeWrapper}>
+                            <QRCode
+                                value={`klyro://user/${user?.username}`}
+                                size={180}
+                                color={textPrimary}
+                                backgroundColor={surface}
+                                logo={require("../../assets/KlyroLightLogo.png")}
+                                logoSize={40}
+                                logoBackgroundColor={surface}
+                            />
+                        </View>
+                        
+                        <Text style={[s.qrFooterTxt, { color: textSecondary }]}>
+                            Scan this code to start a chat on Klyro.
+                        </Text>
+                        
+                        <TouchableOpacity style={[s.closeQRBtn, { backgroundColor: accent }]} onPress={() => setShowQR(false)}>
+                            <Text style={s.closeQRTxt}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </ScrollView>
     );
 }
@@ -215,4 +273,17 @@ const s = StyleSheet.create({
     itemSubLabel: { fontSize: 13, marginTop: 1 },
     
     versionTxt: { textAlign: "center", fontSize: 12, fontWeight: "500", marginTop: 8 },
+    
+    // QR Modal Styles
+    qrOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
+    qrCard: { width: "80%", borderRadius: radius.xl, padding: 24, alignItems: "center", ...shadows.xl },
+    qrHeader: { flexDirection: "row", alignItems: "center", width: "100%", marginBottom: 24 },
+    qrAvatar: { width: 50, height: 50, borderRadius: 25, justifyContent: "center", alignItems: "center", marginRight: 12 },
+    qrInfo: { flex: 1 },
+    qrName: { fontSize: 18, fontWeight: "700" },
+    qrUsername: { fontSize: 14 },
+    qrCodeWrapper: { padding: 16, backgroundColor: "#fff", borderRadius: radius.lg, ...shadows.md, marginBottom: 24 },
+    qrFooterTxt: { textAlign: "center", fontSize: 13, marginBottom: 24, paddingHorizontal: 10 },
+    closeQRBtn: { width: "100%", paddingVertical: 14, borderRadius: radius.lg, alignItems: "center" },
+    closeQRTxt: { color: "#fff", fontSize: 16, fontWeight: "600" },
 });

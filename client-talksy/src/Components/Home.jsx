@@ -284,9 +284,6 @@ export default function Home({ navigation, setIsLoggedIn }) {
                         <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}>
                             <Ionicons name="search" size={20} color={textTertiary} />
                         </TouchableOpacity>
-                        <TouchableOpacity style={[s.headerIconBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(196,115,74,0.08)" }]}>
-                            <Ionicons name="ellipsis-vertical" size={20} color={textTertiary} />
-                        </TouchableOpacity>
                     </View>
                 </View>
 

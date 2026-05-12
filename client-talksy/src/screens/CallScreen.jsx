@@ -4,90 +4,49 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SocketContext } from "../context/SocketContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAgoraCall } from "../hooks/useAgoraCall";
+import { useWebRTCCall } from "../hooks/useWebRTCCall";
 
 export default function CallScreen({ route, navigation }) {
   const { user, isCaller, incomingSignal } = route.params;
   const { socket } = useContext(SocketContext);
   
-  const [callStatus, setCallStatus] = useState(isCaller ? "Calling..." : "Incoming Call...");
   const [isSpeaker, setIsSpeaker] = useState(false);
-  
   const [callDuration, setCallDuration] = useState(0);
   const timerRef = useRef(null);
-  const [myId, setMyId] = useState("");
-  const channelName = isCaller ? `call_${Date.now()}` : incomingSignal?.signal?.channel || "default_channel";
 
-  // Use the Agora Call Hook (mocked for Expo Go compatibility)
-  const { isMuted, toggleMute, endCall: agoraEndCall } = useAgoraCall(
-    channelName, 
-    myId ? parseInt(myId.slice(-6), 16) : 0, 
+  // Use the new WebRTC Hook
+  const { 
+    callStatus,
+    isMuted, 
+    toggleMute, 
+    acceptCall: rtcAcceptCall,
+    endCall: rtcEndCall 
+  } = useWebRTCCall(
+    socket,
+    isCaller,
+    user,
+    incomingSignal,
     false
   );
 
   useEffect(() => {
-    AsyncStorage.getItem("userId").then(id => {
-      setMyId(id);
-      setupCall(id, channelName);
-    });
-    
-    return () => {
-      endCall(false);
-    };
-  }, []);
-
-  const setupCall = (currentUserId, channel) => {
-    if (socket) {
-      socket.on("call_accepted", () => {
-        setCallStatus("Connected");
-        startTimer();
-      });
-
-      socket.on("call_ended", () => {
-        endCall(false);
-      });
+    if (callStatus === "Connected") {
+      startTimer();
     }
-
-    if (isCaller) {
-      if (socket) {
-        AsyncStorage.getItem("user").then(uStr => {
-          const me = uStr ? JSON.parse(uStr) : {};
-          socket.emit("call_user", {
-            userToCall: user._id || user.id,
-            signalData: { channel },
-            from: currentUserId,
-            isVideo: false,
-            callerName: me.name || me.username || "Klyro User",
-            callerPic: me.profilePic || ""
-          });
-        });
-      }
-    }
-  };
+  }, [callStatus]);
 
   const acceptCall = () => {
-    if (!incomingSignal) return;
-    if (socket) {
-      socket.emit("answer_call", { signal: { channel: channelName }, to: incomingSignal.from });
-    }
-    setCallStatus("Connected");
-    startTimer();
+    rtcAcceptCall();
   };
 
   const endCall = (emit = true) => {
     if (timerRef.current) clearInterval(timerRef.current);
-    agoraEndCall();
-    
-    if (emit && socket) {
-      const toId = isCaller ? user._id : incomingSignal?.from;
-      if (toId) {
-        socket.emit("end_call", { to: toId });
-      }
-    }
+    rtcEndCall(emit);
     navigation.goBack();
   };
 
   const startTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setCallDuration(prev => prev + 1);
     }, 1000);

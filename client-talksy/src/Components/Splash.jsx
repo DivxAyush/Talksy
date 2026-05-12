@@ -10,6 +10,8 @@ export default function Splash() {
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const wordmarkOpacity = useRef(new Animated.Value(0)).current;
   const orbitRotate = useRef(new Animated.Value(0)).current;
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const floatAnim2 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Logo entrance
@@ -43,6 +45,18 @@ export default function Splash() {
         useNativeDriver: true,
       })
     ).start();
+
+    // Floating animation for chat bubbles
+    const createFloat = (anim, delay) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(anim, { toValue: -15, duration: 2500, delay, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 2500, useNativeDriver: true }),
+        ])
+      ).start();
+    };
+    createFloat(floatAnim1, 0);
+    createFloat(floatAnim2, 1250);
   }, []);
 
   const orbitSpin = orbitRotate.interpolate({
@@ -57,6 +71,10 @@ export default function Splash() {
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={bgColor} />
+      
+      {/* Decorative Floating Chat Bubbles */}
+      <Animated.View style={[styles.floatBubble, styles.bubbleLeft, { transform: [{ translateY: floatAnim1 }], backgroundColor: isDark ? "rgba(196,115,74,0.15)" : "rgba(196,115,74,0.12)" }]} />
+      <Animated.View style={[styles.floatBubble, styles.bubbleRight, { transform: [{ translateY: floatAnim2 }], backgroundColor: isDark ? "rgba(196,115,74,0.2)" : "rgba(196,115,74,0.15)" }]} />
       
       {/* Subtle orbital circles */}
       <Animated.View style={[styles.orbitOuter, { borderColor: orbitColor, transform: [{ rotate: orbitSpin }] }]} />
@@ -76,9 +94,10 @@ export default function Splash() {
         />
       </Animated.View>
 
-      {/* Wordmark */}
+      {/* Wordmark and Tagline */}
       <Animated.View style={[styles.wordmarkWrap, { opacity: wordmarkOpacity }]}>
         <Text style={[styles.wordmark, { color: "#C4734A" }]}>Klyro</Text>
+        <Text style={[styles.tagline, { color: isDark ? "#A1A1A6" : "#8E5A55" }]}>Secure • Fast • Connect</Text>
       </Animated.View>
     </View>
   );
@@ -134,11 +153,41 @@ const styles = StyleSheet.create({
   },
   wordmarkWrap: {
     position: "absolute",
-    bottom: height * 0.32,
+    bottom: height * 0.28,
+    alignItems: "center",
   },
   wordmark: {
-    fontSize: 28,
-    fontWeight: "700",
+    fontSize: 32,
+    fontWeight: "800",
     letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  tagline: {
+    fontSize: 14,
+    fontWeight: "500",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+  },
+  floatBubble: {
+    position: "absolute",
+    width: 60,
+    height: 45,
+    borderRadius: 22,
+    borderBottomLeftRadius: 5,
+  },
+  bubbleLeft: {
+    top: height * 0.2,
+    left: width * 0.15,
+    transform: [{ rotate: "-15deg" }],
+  },
+  bubbleRight: {
+    bottom: height * 0.45,
+    right: width * 0.12,
+    width: 45,
+    height: 35,
+    borderRadius: 18,
+    borderBottomRightRadius: 5,
+    borderBottomLeftRadius: 18,
+    transform: [{ rotate: "15deg" }],
   },
 });
